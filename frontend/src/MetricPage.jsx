@@ -16,21 +16,22 @@ import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 const EVALUATE_SNIPPET = `How to use this metric with Evaluate
 This metric supports a Python API through Hugging Face Evaluate.
 
-1) Install dependencies: pip install evaluate requests
+1) Install dependencies: pip install evaluate
 2) Load the metric from Hugging Face repo shmelev/genatator-leaderboard.
-3) Call metric compute and Space API endpoints.
+3) Compute metric values and build stratifier/detailed outputs locally.
 
 import evaluate
-import requests
+from gene_level_final_final_fix import GeneLevelEvaluator
 
 metric = evaluate.load("shmelev/genatator-leaderboard")
+evaluator = GeneLevelEvaluator()
 
-pred_gff = "./dummy/predictions.gff"
-true_gff = "./dummy/reference.gff"
-pred_gff_text = open(pred_gff).read()
-true_gff_text = open(true_gff).read()
+pred_gff_path = "./dummy/predictions.gff"
+true_gff_path = "./dummy/reference.gff"
+pred_gff_text = open(pred_gff_path).read()
+true_gff_text = open(true_gff_path).read()
 
-"""Compute both branches with the local Evaluate metric wrapper."""
+"""Compute both branches through Evaluate."""
 result = metric.compute(
     pred_gff=pred_gff_text,
     true_gff=true_gff_text,
@@ -40,27 +41,27 @@ result = metric.compute(
 print(result["exon"][250]["interval-level"]["f1"])
 print(result["cds"][250]["segmentation-level"]["f1"])
 
-base_url = "https://shmelev-genatator-leaderboard.hf.space"
+"""Build stratifier rows locally from exon branch results."""
+stratifier = evaluator.build_stratifier(
+    branch_result=result["exon"],
+    pred_gff=pred_gff_path,
+    true_gff=true_gff_path,
+    use_strand=True,
+    gene_biotypes=["protein_coding", "lncRNA"],
+    transcript_types=["mRNA", "lnc_RNA"],
+)
+print(stratifier["transcript_type"]["mRNA"][250])
 
-"""Get leaderboard overview and pick one model id."""
-overview = requests.get(f"{base_url}/api/leaderboard/overview", timeout=30).json()
-model_id = overview["models"][0]["model_id"]
-
-"""Read stratified metrics from API."""
-stratifier = requests.get(
-    f"{base_url}/api/leaderboard/stratifier",
-    params={"model_id": model_id, "branch": "exon", "rule": "transcript_type", "k": 250},
-    timeout=30,
-).json()
-print(stratifier["rows"][:3])
-
-"""Read transcript-level evidence from API."""
-detail = requests.get(
-    f"{base_url}/api/leaderboard/gene/gene-LOC124908093",
-    params={"branch": "exon", "k": 250, "model_ids": model_id},
-    timeout=30,
-).json()
-print(detail["gene"]["gene_id"], len(detail["gene"]["transcripts"]))`;
+"""Build transcript-level detailed information locally."""
+detailed = evaluator.build_detailed_info(
+    branch_result=result["exon"],
+    pred_gff=pred_gff_path,
+    true_gff=true_gff_path,
+    use_strand=True,
+    gene_biotypes=["protein_coding", "lncRNA"],
+    transcript_types=["mRNA", "lnc_RNA"],
+)
+print(len(detailed), list(detailed.keys())[:3])`;
 
 function SectionTitle({ icon = null, title, subtitle = null }) {
   return (
