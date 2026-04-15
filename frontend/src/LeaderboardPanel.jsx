@@ -27,14 +27,7 @@ import {
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import ApiIcon from "@mui/icons-material/Api";
-import InsightsIcon from "@mui/icons-material/Insights";
-import FunctionsIcon from "@mui/icons-material/Functions";
-import DatasetLinkedIcon from "@mui/icons-material/DatasetLinked";
-import ManageSearchIcon from "@mui/icons-material/ManageSearch";
 import SearchIcon from "@mui/icons-material/Search";
-import LeaderboardIcon from "@mui/icons-material/Leaderboard";
-import BiotechIcon from "@mui/icons-material/Biotech";
 import {
   CartesianGrid,
   Legend,
@@ -81,13 +74,6 @@ const SORT_METRICS = [
   { value: "cds_segmentation_mi", label: "Rank by CDS MI with segmentation" },
 ];
 
-const API_SNIPPET = `POST /api/leaderboard/upload
-GET  /api/leaderboard/overview
-GET  /api/leaderboard/full-metrics?branch=exon&k=250&model_ids=model_a,model_b
-GET  /api/leaderboard/stratifier?model_id=model_a&branch=exon&rule=transcript_type&k=250
-GET  /api/leaderboard/genes?branch=exon&page=1&page_size=25&query=
-GET  /api/leaderboard/gene/<gene_id>?branch=exon&k=250&model_ids=model_a,model_b`;
-
 function SectionTitle({ icon = null, title, subtitle = null }) {
   return (
     <Stack spacing={0.6}>
@@ -97,14 +83,6 @@ function SectionTitle({ icon = null, title, subtitle = null }) {
       </Stack>
       {subtitle ? <Typography color="text.secondary">{subtitle}</Typography> : null}
     </Stack>
-  );
-}
-
-function CodePanel({ children }) {
-  return (
-    <Box component="pre" className="code-panel mono">
-      {children}
-    </Box>
   );
 }
 
@@ -162,10 +140,30 @@ function MetricChip({ label, value, temporary = false }) {
   );
 }
 
+function ReadonlyCellField({ value }) {
+  return (
+    <TextField
+      value={value || "—"}
+      fullWidth
+      inputProps={{ readOnly: true }}
+      className="mono"
+      size="small"
+      sx={{
+        minWidth: 180,
+        "& .MuiInputBase-input": {
+          overflowX: "auto",
+          whiteSpace: "nowrap",
+        },
+      }}
+    />
+  );
+}
+
 export default function LeaderboardPanel() {
+  const uniformFieldSx = { "& .MuiInputBase-root": { height: 56 } };
   const [status, setStatus] = useState(null);
   const [overview, setOverview] = useState(null);
-  const [selectedK, setSelectedK] = useState(250);
+  const [selectedKInput, setSelectedKInput] = useState("250");
   const [sortMetric, setSortMetric] = useState("exon_segmentation_f1");
   const [graphBranch, setGraphBranch] = useState("exon");
   const [graphMetric, setGraphMetric] = useState("segmentation_f1");
@@ -185,7 +183,13 @@ export default function LeaderboardPanel() {
   const [uploadModelName, setUploadModelName] = useState("");
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadMessage, setUploadMessage] = useState("");
+  const [leaderboardExpanded, setLeaderboardExpanded] = useState(false);
   const uploadInputRef = useRef(null);
+  const selectedK = useMemo(() => {
+    const parsed = Number(selectedKInput);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.max(0, Math.min(parsed, 500));
+  }, [selectedKInput]);
 
   const fetchStatus = async () => {
     const response = await fetch("/api/leaderboard/status");
@@ -205,15 +209,15 @@ export default function LeaderboardPanel() {
     const id = window.setInterval(() => {
       fetchStatus();
       fetchOverview();
-    }, 3000);
+    }, status?.running || status?.upload_current ? 1000 : 5000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [status?.running, status?.upload_current]);
 
   useEffect(() => {
     if (!overview) {
       return;
     }
-    setSelectedK((current) => current ?? overview.default_k ?? 250);
+    setSelectedKInput((current) => (current === "" ? "" : current || `${overview.default_k ?? 250}`));
     if (overview.models?.length > 0) {
       setSelectedModels((current) => {
         const allIds = overview.models.map((item) => item.model_id);
@@ -384,41 +388,104 @@ export default function LeaderboardPanel() {
     }
     return Math.round(((status.completed_models || 0) / status.total_models) * 100);
   }, [status]);
+  const progressPreviewValue = useMemo(() => {
+    if (!status?.total_models) {
+      return 0;
+    }
+    const message = `${status?.message || ""}`;
+    const matched = message.match(/\((\d+)\s*\/\s*(\d+)\)/);
+    if (matched) {
+      const current = Number(matched[1]);
+      const total = Number(matched[2]);
+      if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
+        return Math.max(progressValue, Math.round((current / total) * 100));
+      }
+    }
+    return progressValue;
+  }, [status, progressValue]);
 
   return (
     <Stack spacing={3.2}>
       <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 } }}>
         <Stack spacing={2.0}>
           <SectionTitle
-            icon={<LeaderboardIcon color="primary" />}
-            title="API + leaderboard"
-            subtitle="Interactive, biologically rigorous comparison of ab initio genome annotation models evaluated with the fixed gene-level metric implementation."
+            title="Leaderboard description"
+            subtitle="Scientifically interpretable comparison of ab initio annotation models."
           />
-          <Typography color="text.secondary">
-            The leaderboard is built around exact interval agreement rather than token-level surrogates. In the exon branch, a
-            predicted transcript is rewarded only when its exon-defined interval matches a reference transcript within tolerance
-            <span className="mono"> k </span> and, under the stricter segmentation layer, when the exon structure itself is correctly
-            reconstructed. In the CDS branch, the same logic is applied to coding sequence intervals and exact CDS segmentation.
-            This two-branch view is biologically motivated because exon reconstruction measures transcript architecture as a whole,
-            whereas CDS reconstruction isolates the protein-coding core where boundary errors can induce frameshifts or remove
-            coding sequence.
-          </Typography>
-          <Typography color="text.secondary">
-            For each branch, the leaderboard reports interval-level precision, recall, F1, and a multi-isoform score (MI). The
-            interval layer measures whether a model localizes transcript objects correctly. The segmentation layer applies an
-            additional exact-structure filter to the interval matches, thereby quantifying whether the internal exon or CDS parts
-            are also reconstructed correctly. MI counts genes for which at least two distinct reference isoforms are recovered by at
-            least two distinct predictions, making the benchmark sensitive not only to single-best transcript recovery but also to
-            isoform diversity.
-          </Typography>
-          <Typography color="text.secondary">
-            The panels below let you inspect the benchmark at multiple resolutions: model-level summary scores, metric curves over
-            the full range of k, complete metric tables for a chosen operating point, stratified analyses over biologically relevant
-            groups, and transcript-level inspection of matched predictions for every ground-truth gene in the benchmark.
-          </Typography>
+          <Box sx={{ position: "relative" }}>
+            <Box
+              sx={{
+                maxHeight: leaderboardExpanded ? "none" : 340,
+                overflow: "hidden",
+                pr: 0.5,
+              }}
+            >
+              <Typography color="text.secondary">
+            The leaderboard is designed not as a popularity table, but as a <strong>scientifically interpretable comparison framework</strong>.
+            Its main panel reports eight primary summary scores: interval-level F1, interval-level MI, segmentation-level F1, and
+            segmentation-level MI for the exon branch, and the same four metrics for the CDS branch. Together, these scores distinguish
+            four different aspects of performance: broad transcript recovery, recovery of isoform diversity, biologically correct internal
+            reconstruction, and coding-structure fidelity. This prevents a model from appearing strong on the basis of a single favorable
+            metric while failing in another biologically essential dimension.
+              </Typography>
+              <Typography color="text.secondary">
+            The leaderboard does not rely on a single operating point alone. Instead, it visualizes each selected metric as a{" "}
+            <strong>continuous function of the tolerance parameter (k)</strong>. This presentation is scientifically important, because
+            it exposes how rapidly model quality changes as one moves from exact matching toward more permissive matching. A model whose
+            curve rises only under large tolerances is fundamentally different from a model that performs well near exact matching, even
+            if both happen to share a similar score at one chosen value of (k). The curve view therefore captures robustness, boundary
+            precision, and error sensitivity in a way that a single scalar cannot.
+              </Typography>
+              <Typography color="text.secondary">
+            Once a specific tolerance is selected, the leaderboard expands into a <strong>full metrics view</strong>, where the aggregate
+            scores are decomposed into their biological components: matched and unmatched predictions, recovered and missed genes, part-level
+            exact scores, and multi-isoform counts. This makes the comparison transparent. Users can see whether a model achieves a favorable
+            F1 by high precision, by high recall, or by a particular balance between the two. They can also determine whether performance
+            differences arise from transcript localization, from segmentation fidelity, or from isoform recovery. In this sense, the leaderboard
+            is intended not merely to rank models, but to explain ranking.
+              </Typography>
+              <Typography color="text.secondary">
+            The stratified and transcript-resolved sections extend this philosophy further. A model may rank well overall while failing
+            systematically on lncRNAs, on one strand, or on particular chromosomes. Likewise, an aggregate metric may hide whether errors
+            are concentrated in a small subset of difficult genes or are distributed broadly across the annotation. By placing gene- and
+            transcript-level evidence directly under the global comparison, the leaderboard preserves scientific traceability from summary
+            score to underlying annotation event. This is especially important for genome annotation, where the central question is not only
+            which model scores highest, but <strong>what kinds of biological structures each model can and cannot recover</strong>.
+              </Typography>
+              <Typography color="text.secondary">
+            In summary, the metric and leaderboard are built around a single principle: <strong>biological validity should take precedence
+            over superficial agreement</strong>. The exon branch evaluates transcript reconstruction across coding and non-coding genes.
+            The CDS branch focuses on preservation of coding structure. Interval-level scores measure localization, segmentation-level
+            scores measure structural correctness, MI measures isoform recovery, part-level metrics diagnose local element detection, and
+            stratified plus transcript-resolved views expose where and why models succeed or fail. Taken together, this framework provides
+            a more faithful assessment of ab initio annotation quality than conventional per-base evaluation and is intended to serve as a
+            rigorous benchmark for the next generation of genome annotation models.
+              </Typography>
+            </Box>
+            {!leaderboardExpanded ? (
+              <Box
+                sx={{
+                  position: "absolute",
+                  bottom: 44,
+                  left: 0,
+                  right: 0,
+                  height: 64,
+                  background: "linear-gradient(to bottom, rgba(248,251,250,0), rgba(248,251,250,1))",
+                  pointerEvents: "none",
+                }}
+              />
+            ) : null}
+            <Button variant="text" onClick={() => setLeaderboardExpanded((value) => !value)} sx={{ mt: 0.8 }}>
+              {leaderboardExpanded ? "Show less" : "Show more"}
+            </Button>
+          </Box>
           {showProgress ? (
             <Stack spacing={1.1}>
-              <LinearProgress variant={status?.total_models ? "determinate" : "indeterminate"} value={progressValue} />
+              <LinearProgress
+                variant={status?.total_models ? "buffer" : "indeterminate"}
+                value={progressValue}
+                valueBuffer={progressPreviewValue}
+              />
               <Typography color="text.secondary">
                 {status?.message || "Loading leaderboard…"}
               </Typography>
@@ -433,11 +500,9 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Box className="top-two-column-grid">
-        <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
           <Stack spacing={1.8}>
             <SectionTitle
-              icon={<UploadFileIcon color="primary" />}
               title="Temporary custom submission"
               subtitle="Upload a prediction GFF and a model name to embed a temporary result across all leaderboard panels."
             />
@@ -468,22 +533,10 @@ export default function LeaderboardPanel() {
             </Stack>
             {uploadMessage ? <Alert severity="info">{uploadMessage}</Alert> : null}
             <Alert severity="info">
-              Permanent repository: <span className="mono">{overview?.source_repository_url || "https://github.com/alexeyshmelev/genatator-leaderboard.git"}</span>
+              Permanent repository: <span className="mono">{overview?.source_repository_url || "https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git"}</span>
             </Alert>
           </Stack>
-        </Paper>
-
-        <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
-          <Stack spacing={1.8}>
-            <SectionTitle
-              icon={<ApiIcon color="primary" />}
-              title="REST API"
-              subtitle="These endpoints expose the same leaderboard state used by the interface."
-            />
-            <CodePanel>{API_SNIPPET}</CodePanel>
-          </Stack>
-        </Paper>
-      </Box>
+      </Paper>
 
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
         <Stack spacing={2.0}>
@@ -494,25 +547,33 @@ export default function LeaderboardPanel() {
             alignItems={{ xs: "stretch", lg: "center" }}
           >
             <SectionTitle
-              icon={<FunctionsIcon color="primary" />}
               title="Main metrics"
               subtitle="The table is evaluated at a user-selected tolerance k and shows both exon and CDS branches simultaneously."
             />
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
               <TextField
-                label="k"
+                label="Active k"
                 type="number"
-                value={selectedK}
-                onChange={(event) => setSelectedK(Math.max(0, Math.min(500, Number(event.target.value) || 0)))}
+                value={selectedKInput}
+                onChange={(event) => setSelectedKInput(event.target.value)}
+                onBlur={() => {
+                  if (selectedKInput === "") return;
+                  const parsed = Number(selectedKInput);
+                  if (!Number.isFinite(parsed)) {
+                    setSelectedKInput("0");
+                    return;
+                  }
+                  setSelectedKInput(`${Math.max(0, Math.min(parsed, 500))}`);
+                }}
                 inputProps={{ min: 0, max: 500 }}
-                sx={{ width: 120 }}
+                sx={{ width: 120, ...uniformFieldSx }}
               />
               <TextField
                 select
                 label="Sort rows"
                 value={sortMetric}
                 onChange={(event) => setSortMetric(event.target.value)}
-                sx={{ minWidth: 320 }}
+                sx={{ minWidth: 320, ...uniformFieldSx }}
               >
                 {SORT_METRICS.map((item) => (
                   <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
@@ -575,7 +636,6 @@ export default function LeaderboardPanel() {
         <Stack spacing={2.0}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
-              icon={<InsightsIcon color="primary" />}
               title="Metric curves"
               subtitle="Choose the branch, metric, and models to inspect smooth trajectories over k = 0…500. Click the chart to set the active operating point."
             />
@@ -612,7 +672,7 @@ export default function LeaderboardPanel() {
                 margin={{ top: 10, right: 24, bottom: 10, left: 8 }}
                 onClick={(event) => {
                   if (event && event.activeLabel !== undefined && event.activeLabel !== null) {
-                    setSelectedK(Number(event.activeLabel));
+                    setSelectedKInput(`${Number(event.activeLabel)}`);
                   }
                 }}
               >
@@ -644,7 +704,6 @@ export default function LeaderboardPanel() {
         <Stack spacing={2.0}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
-              icon={<DatasetLinkedIcon color="primary" />}
               title="Full metrics"
               subtitle="Complete metric table at the active k for the models selected in the graph panel."
             />
@@ -709,43 +768,45 @@ export default function LeaderboardPanel() {
         <Stack spacing={2.0}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
-              icon={<ManageSearchIcon color="primary" />}
               title="Stratifier"
               subtitle="Select a model and a biologically meaningful grouping rule to inspect branch-specific behaviour within subsets of the benchmark."
             />
             <BranchTabs value={stratBranch} onChange={setStratBranch} />
           </Stack>
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={5}>
-              <TextField
-                select
-                label="Model"
-                fullWidth
-                value={stratModel}
-                onChange={(event) => setStratModel(event.target.value)}
-              >
-                {(overview?.models || []).map((model) => (
-                  <MenuItem key={model.model_id} value={model.model_id}>{model.display_name}</MenuItem>
-                ))}
-              </TextField>
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                select
-                label="Rule"
-                fullWidth
-                value={stratRule}
-                onChange={(event) => setStratRule(event.target.value)}
-              >
-                {(overview?.available_stratifiers || []).map((rule) => (
-                  <MenuItem key={rule.value} value={rule.value}>{rule.label}</MenuItem>
-                ))}
-              </TextField>
-            </Grid>
-            <Grid item xs={12} md={3}>
-              <TextField label="k" value={selectedK} fullWidth disabled />
-            </Grid>
-          </Grid>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", md: "minmax(0, 5fr) minmax(0, 4fr) minmax(0, 3fr)" },
+              gap: 2,
+              width: "100%",
+            }}
+          >
+            <TextField
+              select
+              label="Model"
+              fullWidth
+              value={stratModel}
+              onChange={(event) => setStratModel(event.target.value)}
+              sx={uniformFieldSx}
+            >
+              {(overview?.models || []).map((model) => (
+                <MenuItem key={model.model_id} value={model.model_id}>{model.display_name}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              label="Rule"
+              fullWidth
+              value={stratRule}
+              onChange={(event) => setStratRule(event.target.value)}
+              sx={uniformFieldSx}
+            >
+              {(overview?.available_stratifiers || []).map((rule) => (
+                <MenuItem key={rule.value} value={rule.value}>{rule.label}</MenuItem>
+              ))}
+            </TextField>
+            <TextField label="Active k" value={selectedK} fullWidth disabled sx={uniformFieldSx} />
+          </Box>
           {!stratifier?.rows?.length ? (
             <Alert severity="info">No stratified rows are available for the current selection.</Alert>
           ) : (
@@ -783,27 +844,30 @@ export default function LeaderboardPanel() {
         <Stack spacing={2.0}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
-              icon={<BiotechIcon color="primary" />}
               title="Detailed information"
               subtitle="Ground-truth genes are listed first. Expanding a gene reveals its transcripts, and expanding a transcript reveals the matched predictions from the selected models."
             />
             <BranchTabs value={detailBranch} onChange={(next) => { setDetailBranch(next); setGenePage(1); setExpandedGene(false); }} />
           </Stack>
 
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={8}>
-              <TextField
-                fullWidth
-                label="Search ground-truth genes, transcripts, chromosome, or type"
-                value={geneQuery}
-                onChange={(event) => { setGeneQuery(event.target.value); setGenePage(1); }}
-                InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} /> }}
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField label="Active k" value={selectedK} fullWidth disabled />
-            </Grid>
-          </Grid>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", md: "minmax(0, 8fr) minmax(0, 4fr)" },
+              gap: 2,
+              width: "100%",
+            }}
+          >
+            <TextField
+              fullWidth
+              label="Search ground-truth genes, transcripts, chromosome, or type"
+              value={geneQuery}
+              onChange={(event) => { setGeneQuery(event.target.value); setGenePage(1); }}
+              InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} /> }}
+              sx={uniformFieldSx}
+            />
+            <TextField label="Active k" value={selectedK} fullWidth disabled sx={uniformFieldSx} />
+          </Box>
 
           {geneList.items?.length === 0 ? (
             <Alert severity="info">No ground-truth genes match the current filter.</Alert>
@@ -826,14 +890,14 @@ export default function LeaderboardPanel() {
                   >
                     <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                       <Stack spacing={0.6} sx={{ width: "100%" }}>
-                        <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={1.2}>
-                          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                             <Typography fontWeight={760}>{gene.gene_id}</Typography>
                             {gene.transcript_types.map((item) => <Chip size="small" key={`${gene.gene_id}-${item}`} label={item} />)}
-                          </Stack>
-                          <Typography color="text.secondary">
-                            {gene.chromosome}:{gene.start}-{gene.end} ({gene.strand})
-                          </Typography>
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              label={`${gene.chromosome}:${gene.start}-${gene.end} (${gene.strand})`}
+                            />
                         </Stack>
                         <Typography variant="body2" color="text.secondary">
                           {gene.transcript_count} transcript{gene.transcript_count === 1 ? "" : "s"}
@@ -852,16 +916,16 @@ export default function LeaderboardPanel() {
                             <Accordion key={transcript.transcript_id} className="nested-accordion">
                               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                                 <Stack spacing={0.5} sx={{ width: "100%" }}>
-                                  <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={1.0}>
-                                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                                       <Typography fontWeight={760}>{transcript.transcript_id}</Typography>
                                       <Chip size="small" label={transcript.transcript_type} />
                                       <Chip size="small" variant="outlined" label={`${transcript.length} nt`} />
                                       <Chip size="small" variant="outlined" label={`${transcript.matched_prediction_count} matched predictions`} />
-                                    </Stack>
-                                    <Typography color="text.secondary">
-                                      {transcript.chromosome}:{transcript.start}-{transcript.end} ({transcript.strand})
-                                    </Typography>
+                                      <Chip
+                                        size="small"
+                                        variant="outlined"
+                                        label={`${transcript.chromosome}:${transcript.start}-${transcript.end} (${transcript.strand})`}
+                                      />
                                   </Stack>
                                 </Stack>
                               </AccordionSummary>
@@ -889,8 +953,7 @@ export default function LeaderboardPanel() {
                                             <TableCell>Coordinate</TableCell>
                                             <TableCell>Exon segments</TableCell>
                                             <TableCell>CDS segments</TableCell>
-                                            <TableCell>Interval min k</TableCell>
-                                            <TableCell>Segmentation min k</TableCell>
+                                            <TableCell>Min k</TableCell>
                                             <TableCell>Matched at current k</TableCell>
                                           </TableRow>
                                         </TableHead>
@@ -903,19 +966,17 @@ export default function LeaderboardPanel() {
                                                   {match.temporary ? <Chip size="small" variant="outlined" label="temporary" /> : null}
                                                 </Stack>
                                               </TableCell>
-                                              <TableCell>{match.pred_id}</TableCell>
+                                              <TableCell><ReadonlyCellField value={match.pred_id} /></TableCell>
                                               <TableCell>
-                                                {match.chromosome ? `${match.chromosome}:${match.start}-${match.end} (${match.strand})` : "—"}
+                                                <ReadonlyCellField
+                                                  value={match.chromosome ? `${match.chromosome}:${match.start}-${match.end} (${match.strand})` : "—"}
+                                                />
                                               </TableCell>
                                               <TableCell><SegmentBox segments={match.exon_segments} /></TableCell>
                                               <TableCell><SegmentBox segments={match.cds_segments} /></TableCell>
-                                              <TableCell>{formatScore(match.interval_min_k, 0)}</TableCell>
-                                              <TableCell>{formatScore(match.segmentation_min_k, 0)}</TableCell>
+                                              <TableCell>{formatScore(match.min_k, 0)}</TableCell>
                                               <TableCell>
-                                                <Stack direction="row" spacing={0.8}>
-                                                  <MetricChip label="interval" value={match.interval_matched_at_k ? 1 : 0} temporary={false} />
-                                                  <MetricChip label="seg" value={match.segmentation_matched_at_k ? 1 : 0} temporary={false} />
-                                                </Stack>
+                                                <MetricChip label="match" value={match.matched_at_k ? 1 : 0} temporary={false} />
                                               </TableCell>
                                             </TableRow>
                                           ))}
