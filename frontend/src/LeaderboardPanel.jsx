@@ -160,6 +160,7 @@ function ReadonlyCellField({ value }) {
 }
 
 export default function LeaderboardPanel() {
+  const uniformFieldSx = { "& .MuiInputBase-root": { height: 56 } };
   const [status, setStatus] = useState(null);
   const [overview, setOverview] = useState(null);
   const [selectedKInput, setSelectedKInput] = useState("250");
@@ -565,14 +566,14 @@ export default function LeaderboardPanel() {
                   setSelectedKInput(`${Math.max(0, Math.min(parsed, 500))}`);
                 }}
                 inputProps={{ min: 0, max: 500 }}
-                sx={{ width: 120 }}
+                sx={{ width: 120, ...uniformFieldSx }}
               />
               <TextField
                 select
                 label="Sort rows"
                 value={sortMetric}
                 onChange={(event) => setSortMetric(event.target.value)}
-                sx={{ minWidth: 320 }}
+                sx={{ minWidth: 320, ...uniformFieldSx }}
               >
                 {SORT_METRICS.map((item) => (
                   <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
@@ -772,39 +773,40 @@ export default function LeaderboardPanel() {
             />
             <BranchTabs value={stratBranch} onChange={setStratBranch} />
           </Stack>
-          <Grid container spacing={2} alignItems="stretch">
-            <Grid item xs={12} md={5}>
-              <TextField
-                select
-                label="Model"
-                size="small"
-                fullWidth
-                value={stratModel}
-                onChange={(event) => setStratModel(event.target.value)}
-              >
-                {(overview?.models || []).map((model) => (
-                  <MenuItem key={model.model_id} value={model.model_id}>{model.display_name}</MenuItem>
-                ))}
-              </TextField>
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                select
-                label="Rule"
-                size="small"
-                fullWidth
-                value={stratRule}
-                onChange={(event) => setStratRule(event.target.value)}
-              >
-                {(overview?.available_stratifiers || []).map((rule) => (
-                  <MenuItem key={rule.value} value={rule.value}>{rule.label}</MenuItem>
-                ))}
-              </TextField>
-            </Grid>
-            <Grid item xs={12} md={3}>
-              <TextField label="Active k" value={selectedK} fullWidth disabled size="small" />
-            </Grid>
-          </Grid>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", md: "minmax(0, 5fr) minmax(0, 4fr) minmax(0, 3fr)" },
+              gap: 2,
+              width: "100%",
+            }}
+          >
+            <TextField
+              select
+              label="Model"
+              fullWidth
+              value={stratModel}
+              onChange={(event) => setStratModel(event.target.value)}
+              sx={uniformFieldSx}
+            >
+              {(overview?.models || []).map((model) => (
+                <MenuItem key={model.model_id} value={model.model_id}>{model.display_name}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              label="Rule"
+              fullWidth
+              value={stratRule}
+              onChange={(event) => setStratRule(event.target.value)}
+              sx={uniformFieldSx}
+            >
+              {(overview?.available_stratifiers || []).map((rule) => (
+                <MenuItem key={rule.value} value={rule.value}>{rule.label}</MenuItem>
+              ))}
+            </TextField>
+            <TextField label="Active k" value={selectedK} fullWidth disabled sx={uniformFieldSx} />
+          </Box>
           {!stratifier?.rows?.length ? (
             <Alert severity="info">No stratified rows are available for the current selection.</Alert>
           ) : (
@@ -848,21 +850,24 @@ export default function LeaderboardPanel() {
             <BranchTabs value={detailBranch} onChange={(next) => { setDetailBranch(next); setGenePage(1); setExpandedGene(false); }} />
           </Stack>
 
-          <Grid container spacing={2} alignItems="stretch">
-            <Grid item xs={12} md={8}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Search ground-truth genes, transcripts, chromosome, or type"
-                value={geneQuery}
-                onChange={(event) => { setGeneQuery(event.target.value); setGenePage(1); }}
-                InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} /> }}
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField label="Active k" value={selectedK} fullWidth disabled size="small" />
-            </Grid>
-          </Grid>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", md: "minmax(0, 8fr) minmax(0, 4fr)" },
+              gap: 2,
+              width: "100%",
+            }}
+          >
+            <TextField
+              fullWidth
+              label="Search ground-truth genes, transcripts, chromosome, or type"
+              value={geneQuery}
+              onChange={(event) => { setGeneQuery(event.target.value); setGenePage(1); }}
+              InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} /> }}
+              sx={uniformFieldSx}
+            />
+            <TextField label="Active k" value={selectedK} fullWidth disabled sx={uniformFieldSx} />
+          </Box>
 
           {geneList.items?.length === 0 ? (
             <Alert severity="info">No ground-truth genes match the current filter.</Alert>
