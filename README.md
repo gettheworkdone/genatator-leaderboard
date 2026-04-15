@@ -1,5 +1,5 @@
 ---
-title: GENATATOR Gene-level Metric + Leaderboard
+title: Ab Initio Leaderboard and Metric
 emoji: 🧬
 colorFrom: green
 colorTo: blue
@@ -7,46 +7,73 @@ sdk: docker
 app_port: 7860
 pinned: false
 license: apache-2.0
-short_description: Biologically rigorous gene-level leaderboard for ab initio genome annotation
+short_description: Ab initio genome annotation metric and leaderboard
 ---
 
-# GENATATOR gene-level metric and leaderboard
+# Ab Initio Leaderboard and Metric
 
-This Hugging Face Space provides a biologically rigorous leaderboard for evaluating **ab initio genome annotation** models with a fixed gene-level metric implementation.
+This Hugging Face Space provides a transcript-centered benchmark for **ab initio genome annotation** with a fixed metric engine.
 
 ## What is included
 
 The repository contains two interface sections:
 
-1. **Metric description** — scientific explanation of the metric together with a GFF-only playground.
-2. **API + leaderboard** — an interactive leaderboard with summary tables, curves over `k = 0..500`, full metrics at any selected `k`, stratified analysis, and transcript-level inspection of matched predictions.
+1. **Metric description** — scientific rationale plus a GFF playground.
+2. **Leaderboard** — summary tables, curves over `k = 0..500`, full metrics at any selected Active k, stratified analysis, and transcript-level inspection.
 
-The backend uses the provided file `gene_level_final_final_fix.py` unchanged as the metric engine for exon and CDS evaluation, stratification, and transcript-level details.
+The backend uses `gene_level_final_final_fix.py` unchanged as the metric engine for exon and CDS evaluation, stratification, and transcript-level details.
 
-## Scientific scope
+## Metric description
 
-The leaderboard is designed to favor **biologically meaningful transcript reconstruction** over token-level surrogates. It reports:
+The benchmark is designed to evaluate biologically meaningful transcript recovery rather than token-level agreement. It reports interval-level metrics, stricter segmentation-level metrics, and part-level diagnostics, across exon and CDS branches with tolerance parameter `k`.
 
-- interval-level precision, recall, F1, and multi-isoform score (MI)
-- stricter segmentation-level precision, recall, F1, and MI
-- exact part-level precision, recall, and F1 for exons or CDS parts
+## Leaderboard description
 
-Two branches are exposed throughout the interface:
+The leaderboard is intended as a scientific comparison framework, not only a rank list. It combines curve-based evaluation over `k` with branch-specific summaries and transcript-resolved evidence so users can trace model differences to specific biological structures.
 
-- **Exon branch** — evaluates exon reconstruction for `mRNA` and `lnc_RNA`
-- **CDS branch** — evaluates coding-sequence reconstruction for `mRNA`
+## How to use this metric with Evaluate
 
-## Bundled leaderboard files
+This Space provides a local Evaluate metric script for Python API usage in **GFF mode**.
 
-The archive includes bundled prediction files under `leaderboard_data/predictions/` and a local model-name mapping file at:
+1. Clone this repository.
+2. Install dependencies:
 
-- `leaderboard_data/model_name_mapping.json`
+```bash
+pip install evaluate datasets
+```
 
-At the time this archive was produced, the bundled permanent predictions correspond to the files available in the public repository used for leaderboard submissions.
+3. Load and run the metric:
+
+```python
+import evaluate
+from pathlib import Path
+
+metric = evaluate.load("./backend/evaluate_gene_level_metric.py")
+
+pred_gff_text = Path("predictions.gff").read_text(encoding="utf-8")
+true_gff_text = Path("reference.gff").read_text(encoding="utf-8")
+
+result = metric.compute(
+    pred_gff=pred_gff_text,
+    true_gff=true_gff_text,
+    k_values=list(range(0, 501)),
+)
+
+print(result["exon"][250]["interval-level"]["f1"])
+print(result["cds"][250]["segmentation-level"]["f1"])
+```
+
+Notes:
+- this Evaluate API is GFF-only (no Python-array mode)
+- output payload matches the branch outputs used by the Space playground
+
+## Permanent predictions source
+
+Permanent predictions and mapping are pulled automatically from:
+
+- `https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git`
 
 ## Ground truth file
-
-The benchmark ground-truth file is **not** included in this archive because it will be added manually afterward.
 
 Place:
 
@@ -59,18 +86,6 @@ into:
 so that the final path is:
 
 - `leaderboard_data/ground_truth/chr20.gff`
-
-If the file is missing, the Space still starts, but the leaderboard remains in a waiting state until the file is added and the service is reloaded or restarted.
-
-## Temporary custom uploads
-
-Users can upload a temporary prediction GFF together with a model name. The uploaded model:
-
-- is processed in memory only
-- appears across all leaderboard panels after computation
-- disappears after a Space restart
-
-To add a model permanently to the public leaderboard, submit a pull request to the public prediction repository used by this Space.
 
 ## Local run
 
