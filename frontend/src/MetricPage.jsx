@@ -286,40 +286,43 @@ export default function MetricPage() {
         </Stack>
       </Paper>
 
-      <Grid container spacing={2} alignItems="stretch">
-        <Grid item xs={12} md={4}>
-          <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, height: "100%" }}>
-            <Stack spacing={2.0}>
-              <SectionTitle
-                title="Accepted input"
-                subtitle="The playground works with GFF/GFF3-style annotations and evaluates both branches across k = 0..500."
-              />
-            <Typography color="text.secondary">
-              Provide a prediction GFF and a ground-truth GFF. The evaluator parses transcript, exon, and CDS features directly
-              from these files and computes the full set of branch-specific metrics for <span className="mono">k = 0…500</span>.
-              The prediction file should describe transcript models produced by the method under evaluation. The ground-truth file
-              should contain the reference transcript annotation for the same genomic region.
-            </Typography>
-            <Typography color="text.secondary">
-              The leaderboard uses <span className="mono">use_strand=True</span> together with transcript filters appropriate for each
-              branch. The exon branch evaluates <span className="mono">mRNA</span> and <span className="mono">lnc_RNA</span> transcripts.
-              The CDS branch evaluates <span className="mono">mRNA</span> transcripts with annotated coding sequence.
-            </Typography>
-            </Stack>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={8}>
-          <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, height: "100%" }}>
-            <Stack spacing={2.0}>
-              <SectionTitle
-                title="How to use this metric with Evaluate"
-                subtitle="Python examples for metric compute, stratifier, and detailed information."
-              />
-              <CodePanel>{EVALUATE_SNIPPET}</CodePanel>
-            </Stack>
-          </Paper>
-        </Grid>
-      </Grid>
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(0, 2fr)" },
+          gap: 2,
+          width: "100%",
+        }}
+      >
+        <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, height: "100%" }}>
+          <Stack spacing={2.0}>
+            <SectionTitle
+              title="Accepted input"
+              subtitle="The playground works with GFF/GFF3-style annotations and evaluates both branches across k = 0..500."
+            />
+          <Typography color="text.secondary">
+            Provide a prediction GFF and a ground-truth GFF. The evaluator parses transcript, exon, and CDS features directly
+            from these files and computes the full set of branch-specific metrics for <span className="mono">k = 0…500</span>.
+            The prediction file should describe transcript models produced by the method under evaluation. The ground-truth file
+            should contain the reference transcript annotation for the same genomic region.
+          </Typography>
+          <Typography color="text.secondary">
+            The leaderboard uses <span className="mono">use_strand=True</span> together with transcript filters appropriate for each
+            branch. The exon branch evaluates <span className="mono">mRNA</span> and <span className="mono">lnc_RNA</span> transcripts.
+            The CDS branch evaluates <span className="mono">mRNA</span> transcripts with annotated coding sequence.
+          </Typography>
+          </Stack>
+        </Paper>
+        <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, height: "100%" }}>
+          <Stack spacing={2.0}>
+            <SectionTitle
+              title="How to use this metric with Evaluate"
+              subtitle="Python examples for metric compute, stratifier, and detailed information."
+            />
+            <CodePanel>{EVALUATE_SNIPPET}</CodePanel>
+          </Stack>
+        </Paper>
+      </Box>
 
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
         <Stack spacing={2.2}>
