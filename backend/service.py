@@ -120,6 +120,8 @@ class LeaderboardService:
         self.external_dir = self.root_dir / "external"
         self.pred_repo_dir = self.external_dir / "genatator-ab-initio-leaderboard-predictions"
         self.ground_truth_path = self.data_dir / "ground_truth" / "chr20.gff"
+        self.sanitized_ground_truth_path = self.data_dir / "ground_truth" / "chr20.sanitized.gff"
+        self._effective_ground_truth_path = self.ground_truth_path
         self.predictions_dir = self.data_dir / "predictions"
         self.mapping_path = self.data_dir / "model_name_mapping.json"
         self._display_name_mapping: dict[str, Any] = {}
@@ -385,6 +387,7 @@ class LeaderboardService:
                     finished_at=time.time(),
                 )
                 return
+            self._effective_ground_truth_path = self._prepare_sanitized_ground_truth()
 
             parsed_ground_truth = gff_text_to_dataframe(self.ground_truth_path.read_text(encoding="utf-8"))
             self._ground_truth_df = parsed_ground_truth if parsed_ground_truth is not None and not parsed_ground_truth.empty else None
@@ -499,7 +502,7 @@ class LeaderboardService:
     ) -> ModelBundle:
         exon_result = self.evaluator.evaluate_gff_exon(
             pred_gff=pred_gff,
-            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
+            true_gff=self._effective_ground_truth_path,
             k_values=DEFAULT_K_VALUES,
             use_strand=USE_STRAND,
             gene_biotypes=EXON_GENE_BIOTYPES,
@@ -507,7 +510,7 @@ class LeaderboardService:
         )
         cds_result = self.evaluator.evaluate_gff_cds(
             pred_gff=pred_gff,
-            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
+            true_gff=self._effective_ground_truth_path,
             k_values=DEFAULT_K_VALUES,
             use_strand=USE_STRAND,
             gene_biotypes=CDS_GENE_BIOTYPES,
@@ -519,7 +522,7 @@ class LeaderboardService:
         exon_stratifier = self.evaluator.build_stratifier(
             branch_result=exon_result,
             pred_gff=pred_gff,
-            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
+            true_gff=self._effective_ground_truth_path,
             use_strand=USE_STRAND,
             gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
@@ -527,7 +530,7 @@ class LeaderboardService:
         cds_stratifier = self.evaluator.build_stratifier(
             branch_result=cds_result,
             pred_gff=pred_gff,
-            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
+            true_gff=self._effective_ground_truth_path,
             use_strand=USE_STRAND,
             gene_biotypes=CDS_GENE_BIOTYPES,
             transcript_types=CDS_TRANSCRIPT_TYPES,
@@ -536,7 +539,7 @@ class LeaderboardService:
         exon_detailed = self.evaluator.build_detailed_info(
             branch_result=exon_result,
             pred_gff=pred_gff,
-            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
+            true_gff=self._effective_ground_truth_path,
             use_strand=USE_STRAND,
             gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
@@ -544,7 +547,7 @@ class LeaderboardService:
         cds_detailed = self.evaluator.build_detailed_info(
             branch_result=cds_result,
             pred_gff=pred_gff,
-            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
+            true_gff=self._effective_ground_truth_path,
             use_strand=USE_STRAND,
             gene_biotypes=CDS_GENE_BIOTYPES,
             transcript_types=CDS_TRANSCRIPT_TYPES,
@@ -581,7 +584,7 @@ class LeaderboardService:
         gene_biotypes: Iterable[str],
         transcript_types: Iterable[str],
     ) -> dict[str, object]:
-        gt_df = self._ground_truth_df.copy() if self._ground_truth_df is not None else self.evaluator._read_gff(self.ground_truth_path)
+        gt_df = self.evaluator._read_gff(self._effective_ground_truth_path)
         normalized_gene_biotypes = self.evaluator._normalize_string_filter(gene_biotypes)
         normalized_transcript_types = self.evaluator._normalize_string_filter(transcript_types)
         true_rows = self.evaluator._extract_true_transcript_rows(
@@ -653,7 +656,7 @@ class LeaderboardService:
     def _build_prediction_index(self, pred_gff: Path | pd.DataFrame) -> dict[str, dict[str, object]]:
         common = self.evaluator._prepare_common_data(
             pred_gff=pred_gff,
-            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
+            true_gff=self._effective_ground_truth_path,
             k_values=[0],
             gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
@@ -803,6 +806,19 @@ class LeaderboardService:
             return files, normalized_map
         except Exception:
             return [], {}
+
+    def _prepare_sanitized_ground_truth(self) -> Path:
+        try:
+            parsed = gff_text_to_dataframe(self.ground_truth_path.read_text(encoding="utf-8"))
+            if parsed.empty:
+                return self.ground_truth_path
+            self.sanitized_ground_truth_path.write_text(
+                parsed.to_csv(sep="\t", header=False, index=False),
+                encoding="utf-8",
+            )
+            return self.sanitized_ground_truth_path
+        except Exception:
+            return self.ground_truth_path
 
     def _display_name_for_path(self, path: Path) -> str:
         mapping = self._display_name_mapping or self._local_mapping()
