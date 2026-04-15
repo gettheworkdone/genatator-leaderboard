@@ -14,22 +14,32 @@ import CalculateIcon from "@mui/icons-material/Calculate";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 const EVALUATE_SNIPPET = `How to use this metric with Evaluate
-This Space metric is GFF-only.
-It does not provide Python-array mode.
+This metric supports a Python API through Hugging Face Evaluate (GFF mode).
 
-Recommended workflow:
-1) Prepare two files:
-   - prediction annotation (.gff/.gff3/.gtf)
-   - reference annotation (.gff/.gff3/.gtf)
-2) Open the Playground section in this Space.
-3) Upload both files and choose Active k.
-4) Click "Run metric".
-5) Read exon/CDS interval-level, segmentation-level, and part-level summaries.
+1) Clone this Space repository locally.
+2) Install dependencies: pip install evaluate datasets
+3) Load the local metric script and compute.
 
-If you need reproducible comparison with permanent models:
-- use the Leaderboard section
-- keep the same ground-truth file
-- compare curves over k = 0..500`;
+import evaluate
+from pathlib import Path
+
+metric = evaluate.load("./backend/evaluate_gene_level_metric.py")
+
+pred_gff_text = Path("predictions.gff").read_text(encoding="utf-8")
+true_gff_text = Path("reference.gff").read_text(encoding="utf-8")
+
+result = metric.compute(
+    pred_gff=pred_gff_text,
+    true_gff=true_gff_text,
+    k_values=list(range(0, 501)),
+)
+
+print(result["exon"][250]["interval-level"]["f1"])
+print(result["cds"][250]["segmentation-level"]["f1"])
+
+Notes:
+- this API is GFF-only (no Python-array mode)
+- output structure matches the Space playground branch outputs`;
 
 function SectionTitle({ icon = null, title, subtitle = null }) {
   return (
@@ -283,7 +293,7 @@ export default function MetricPage() {
           <Stack spacing={2.0}>
             <SectionTitle
               title="How to use this metric with Evaluate"
-              subtitle="This Space metric is GFF-only. Use the Playground workflow for evaluation."
+              subtitle="Use the local Evaluate metric script for Python API access (GFF mode)."
             />
             <CodePanel>{EVALUATE_SNIPPET}</CodePanel>
           </Stack>

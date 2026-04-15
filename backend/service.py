@@ -4,6 +4,7 @@ import copy
 import json
 import math
 import shutil
+import subprocess
 import threading
 import time
 import uuid
@@ -750,49 +751,103 @@ class LeaderboardService:
 
     def _download_remote_prediction_assets(self) -> tuple[list[Path], dict[str, Any]]:
         try:
-            mapping_url = f"{SOURCE_REPOSITORY_RAW_BASE}/model_name_mapping.json"
-            with urlopen(mapping_url, timeout=30) as response:
-                mapping = json.loads(response.read().decode("utf-8"))
-            if not isinstance(mapping, dict):
-                return [], {}
-
+            repo_dir = self.remote_cache_dir / "repo"
             predictions_out_dir = self.remote_cache_dir / "predictions"
+            if repo_dir.exists():
+                shutil.rmtree(repo_dir)
             if predictions_out_dir.exists():
                 shutil.rmtree(predictions_out_dir)
-            predictions_out_dir.mkdir(parents=True, exist_ok=True)
+            self.remote_cache_dir.mkdir(parents=True, exist_ok=True)
 
+            subprocess.run(
+                ["git", "clone", "--depth", "1", SOURCE_REPOSITORY_URL, str(repo_dir)],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            mapping_path = repo_dir / "model_name_mapping.json"
+            mapping = json.loads(mapping_path.read_text(encoding="utf-8")) if mapping_path.exists() else {}
+            if not isinstance(mapping, dict):
+                mapping = {}
+
+            predictions_src_dir = repo_dir / "predictions"
+            predictions_out_dir.mkdir(parents=True, exist_ok=True)
             valid_suffixes = {".gff", ".gff3", ".txt", ".gtf"}
             files: list[Path] = []
-            for filename in sorted(mapping.keys()):
+
+            def _candidate_paths(filename: str) -> list[Path]:
+                parsed = Path(filename)
+                stem = parsed.stem
+                return [
+                    predictions_src_dir / filename,
+                    repo_dir / filename,
+                    predictions_src_dir / f"{stem}.txt",
+                    predictions_src_dir / f"{stem}.gff",
+                    predictions_src_dir / f"{stem}.gff3",
+                    predictions_src_dir / f"{stem}.gtf",
+                ]
+
+            file_names = sorted(mapping.keys()) if mapping else sorted(
+                [path.name for path in predictions_src_dir.iterdir() if path.is_file()]
+            )
+            for filename in file_names:
                 parsed = Path(filename)
                 if parsed.suffix.lower() not in valid_suffixes:
                     continue
+                source_path = next((path for path in _candidate_paths(filename) if path.exists() and path.is_file()), None)
+                if source_path is None:
+                    continue
                 destination = predictions_out_dir / filename
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                stem = parsed.stem
-                raw_candidates = [
-                    f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{filename}",
-                    f"{SOURCE_REPOSITORY_RAW_BASE}/{filename}",
-                    f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{stem}.txt",
-                    f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{stem}.gff",
-                    f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{stem}.gff3",
-                    f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{stem}.gtf",
-                ]
-                payload = None
-                for raw_url in raw_candidates:
-                    try:
-                        with urlopen(raw_url, timeout=60) as response:
-                            payload = response.read()
-                        break
-                    except URLError:
-                        continue
-                if payload is None:
-                    continue
-                destination.write_bytes(payload)
+                shutil.copy2(source_path, destination)
                 files.append(destination)
             return files, mapping
         except Exception:
+            try:
+                return self._download_remote_prediction_assets_raw()
+            except Exception:
+                return [], {}
+
+    def _download_remote_prediction_assets_raw(self) -> tuple[list[Path], dict[str, Any]]:
+        mapping_url = f"{SOURCE_REPOSITORY_RAW_BASE}/model_name_mapping.json"
+        with urlopen(mapping_url, timeout=30) as response:
+            mapping = json.loads(response.read().decode("utf-8"))
+        if not isinstance(mapping, dict):
             return [], {}
+        predictions_out_dir = self.remote_cache_dir / "predictions"
+        if predictions_out_dir.exists():
+            shutil.rmtree(predictions_out_dir)
+        predictions_out_dir.mkdir(parents=True, exist_ok=True)
+        valid_suffixes = {".gff", ".gff3", ".txt", ".gtf"}
+        files: list[Path] = []
+        for filename in sorted(mapping.keys()):
+            parsed = Path(filename)
+            if parsed.suffix.lower() not in valid_suffixes:
+                continue
+            destination = predictions_out_dir / filename
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            stem = parsed.stem
+            raw_candidates = [
+                f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{filename}",
+                f"{SOURCE_REPOSITORY_RAW_BASE}/{filename}",
+                f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{stem}.txt",
+                f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{stem}.gff",
+                f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{stem}.gff3",
+                f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{stem}.gtf",
+            ]
+            payload = None
+            for raw_url in raw_candidates:
+                try:
+                    with urlopen(raw_url, timeout=60) as response:
+                        payload = response.read()
+                    break
+                except URLError:
+                    continue
+            if payload is None:
+                continue
+            destination.write_bytes(payload)
+            files.append(destination)
+        return files, mapping
 
     def _display_name_for_path(self, path: Path) -> str:
         mapping = self._display_name_mapping or self._local_mapping()

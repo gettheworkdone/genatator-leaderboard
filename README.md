@@ -33,68 +33,39 @@ The leaderboard is intended as a scientific comparison framework, not only a ran
 
 ## How to use this metric with Evaluate
 
-Load the version you need (python or `.gff` mode) and run evaluation.
+This Space provides a local Evaluate metric script for Python API usage in **GFF mode**.
 
-### Python-like mode
+1. Clone this repository.
+2. Install dependencies:
+
+```bash
+pip install evaluate datasets
+```
+
+3. Load and run the metric:
 
 ```python
 import evaluate
+from pathlib import Path
 
-metric = evaluate.load("shmelev/gene-level-metric", revision="metric-only")
+metric = evaluate.load("./backend/evaluate_gene_level_metric.py")
 
-result = metric.compute_gene_level_python(
-    preds=[
-        [
-            [0, 0],
-            [1, 0],
-            [1, 1],
-            [0, 0],
-            [1, 1],
-            [1, 1],
-            [0, 0],
-            [0, 0],
-        ]
-    ],
-    targets=[
-        [
-            [0, 0],
-            [1, 0],
-            [1, 1],
-            [0, 0],
-            [1, 1],
-            [1, 1],
-            [0, 0],
-            [0, 0],
-        ]
-    ],
-    mapping=[
-        "TX0001|GENE0001|mRNA|+|GRCh38|chr1|1:8",
-    ],
-    stratifier="type",
-    types=["mRNA", "lnc_RNA"],
-    segments=["exon", "CDS"],
+pred_gff_text = Path("predictions.gff").read_text(encoding="utf-8")
+true_gff_text = Path("reference.gff").read_text(encoding="utf-8")
+
+result = metric.compute(
+    pred_gff=pred_gff_text,
+    true_gff=true_gff_text,
+    k_values=list(range(0, 501)),
 )
 
-print(result)
+print(result["exon"][250]["interval-level"]["f1"])
+print(result["cds"][250]["segmentation-level"]["f1"])
 ```
 
-### GFF mode
-
-```python
-import evaluate
-
-metric = evaluate.load("shmelev/gene-level-metric", revision="metric-only")
-
-result = metric.compute_gene_level_gff(
-    pred_gff="<predictions.gff>",
-    true_gff="<reference.gff>",
-    stratifier="type",
-    types=["mRNA", "lnc_RNA"],
-    segments=["exon", "CDS"],
-)
-
-print(result)
-```
+Notes:
+- this Evaluate API is GFF-only (no Python-array mode)
+- output payload matches the branch outputs used by the Space playground
 
 ## Permanent predictions source
 
