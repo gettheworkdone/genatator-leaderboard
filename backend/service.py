@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import copy
 import json
+import math
+import shutil
+import subprocess
 import threading
 import time
 import uuid
@@ -9,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from queue import Queue
 from typing import Any, Iterable, Optional
+from urllib.error import URLError
+from urllib.request import urlopen
 
 import pandas as pd
 
@@ -17,7 +22,10 @@ from gene_level_final_final_fix import GeneLevelEvaluator
 from .gff_io import gff_text_to_dataframe
 
 
-SOURCE_REPOSITORY_URL = "https://github.com/alexeyshmelev/genatator-leaderboard.git"
+SOURCE_REPOSITORY_URL = "https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git"
+SOURCE_REPOSITORY_RAW_BASE = (
+    "https://raw.githubusercontent.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions/main"
+)
 DEFAULT_K_VALUES = list(range(0, 501))
 DEFAULT_K = 250
 USE_STRAND = True
@@ -47,6 +55,18 @@ def _slugify(text: str) -> str:
     cleaned = "".join(ch.lower() if ch.isalnum() else "-" for ch in text.strip())
     cleaned = "-".join(part for part in cleaned.split("-") if part)
     return cleaned or "model"
+
+
+def _safe_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    return int(numeric)
 
 
 @dataclass
@@ -104,6 +124,8 @@ class LeaderboardService:
         self.ground_truth_path = self.data_dir / "ground_truth" / "chr20.gff"
         self.predictions_dir = self.data_dir / "predictions"
         self.mapping_path = self.data_dir / "model_name_mapping.json"
+        self.remote_cache_dir = self.data_dir / ".remote_predictions_cache"
+        self._display_name_mapping: dict[str, Any] = {}
 
         self.evaluator = GeneLevelEvaluator()
         self._lock = threading.Lock()
@@ -111,6 +133,7 @@ class LeaderboardService:
         self._permanent_models: dict[str, ModelBundle] = {}
         self._temporary_models: dict[str, ModelBundle] = {}
         self._ground_truth_indices: dict[str, dict[str, object]] = {}
+        self._ground_truth_df: pd.DataFrame | None = None
         self._initializer_started = False
         self._upload_queue: Queue[dict[str, object]] = Queue()
         threading.Thread(target=self._upload_worker, daemon=True).start()
@@ -129,6 +152,7 @@ class LeaderboardService:
                 self._permanent_models = {}
                 self._temporary_models = {}
                 self._ground_truth_indices = {}
+                self._ground_truth_df = None
             self._initializer_started = True
             self._state = ServiceState(
                 running=True,
@@ -279,17 +303,21 @@ class LeaderboardService:
                 if detail_entry is None:
                     continue
                 interval_map = {
-                    item["pred_id"]: int(item["min_k"])
+                    item["pred_id"]: safe_value
                     for item in detail_entry["interval-level"].get("predictions", [])
+                    if (safe_value := _safe_int(item.get("min_k"))) is not None
                 }
                 segmentation_map = {
-                    item["pred_id"]: int(item["min_k"])
+                    item["pred_id"]: safe_value
                     for item in detail_entry["segmentation-level"].get("predictions", [])
+                    if (safe_value := _safe_int(item.get("min_k"))) is not None
                 }
                 for pred_id in sorted(set(interval_map) | set(segmentation_map)):
                     pred_meta = bundle.prediction_index.get(pred_id, {})
                     interval_min_k = interval_map.get(pred_id)
                     segmentation_min_k = segmentation_map.get(pred_id)
+                    min_k_candidates = [value for value in (interval_min_k, segmentation_min_k) if value is not None]
+                    min_k = min(min_k_candidates) if min_k_candidates else None
                     matches.append(
                         {
                             "model_id": bundle.model_id,
@@ -302,16 +330,13 @@ class LeaderboardService:
                             "strand": pred_meta.get("strand"),
                             "exon_segments": pred_meta.get("exon_segments", []),
                             "cds_segments": pred_meta.get("cds_segments", []),
-                            "interval_min_k": interval_min_k,
-                            "interval_matched_at_k": interval_min_k is not None and interval_min_k <= selected_k,
-                            "segmentation_min_k": segmentation_min_k,
-                            "segmentation_matched_at_k": segmentation_min_k is not None and segmentation_min_k <= selected_k,
+                            "min_k": min_k,
+                            "matched_at_k": min_k is not None and min_k <= selected_k,
                         }
                     )
             matches.sort(
                 key=lambda item: (
-                    item["interval_min_k"] if item["interval_min_k"] is not None else 10**9,
-                    item["segmentation_min_k"] if item["segmentation_min_k"] is not None else 10**9,
+                    item["min_k"] if item["min_k"] is not None else 10**9,
                     item["model_name"].lower(),
                     item["pred_id"],
                 )
@@ -343,6 +368,13 @@ class LeaderboardService:
 
     def _initialize(self) -> None:
         try:
+            self._set_state(
+                stage="loading-predictions",
+                message="Downloading permanent prediction files and model mapping.",
+            )
+            files, mapping = self._prediction_files_and_mapping()
+            self._display_name_mapping = mapping
+
             if not self.ground_truth_path.exists():
                 self._set_state(
                     running=False,
@@ -356,6 +388,10 @@ class LeaderboardService:
                     finished_at=time.time(),
                 )
                 return
+
+            self._ground_truth_df = gff_text_to_dataframe(self.ground_truth_path.read_text(encoding="utf-8"))
+            if self._ground_truth_df is None or self._ground_truth_df.empty:
+                raise ValueError("Ground-truth GFF is empty or invalid after parsing.")
 
             self._set_state(
                 stage="loading-ground-truth",
@@ -372,7 +408,6 @@ class LeaderboardService:
                 ),
             }
 
-            files = self._prediction_files()
             self._set_state(
                 stage="computing-models",
                 message="Computing biologically rigorous gene-level metrics for bundled prediction files.",
@@ -384,6 +419,7 @@ class LeaderboardService:
             for idx, pred_file in enumerate(files, start=1):
                 display_name = self._display_name_for_path(pred_file)
                 model_id = pred_file.stem
+                pred_df = gff_text_to_dataframe(pred_file.read_text(encoding="utf-8"))
                 self._set_state(
                     current_model=display_name,
                     message=f"Computing leaderboard metrics for {display_name} ({idx}/{len(files)}).",
@@ -391,7 +427,7 @@ class LeaderboardService:
                 new_models[model_id] = self._compute_model_bundle(
                     model_id=model_id,
                     display_name=display_name,
-                    pred_gff=pred_file,
+                    pred_gff=pred_df,
                     temporary=False,
                     source_file=pred_file.name,
                 )
@@ -426,7 +462,7 @@ class LeaderboardService:
                 with self._lock:
                     self._state.upload_current = str(job["model_name"])
                     self._state.upload_queue_length = self._upload_queue.qsize()
-                if not self.ground_truth_path.exists():
+                if self._ground_truth_df is None and not self.ground_truth_path.exists():
                     continue
                 pred_df = gff_text_to_dataframe(str(job["pred_gff_text"]))
                 model_id = f"tmp-{_slugify(str(job['model_name']))}-{job['job_id'][:8]}"
@@ -462,7 +498,7 @@ class LeaderboardService:
     ) -> ModelBundle:
         exon_result = self.evaluator.evaluate_gff_exon(
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
             k_values=DEFAULT_K_VALUES,
             use_strand=USE_STRAND,
             gene_biotypes=EXON_GENE_BIOTYPES,
@@ -470,7 +506,7 @@ class LeaderboardService:
         )
         cds_result = self.evaluator.evaluate_gff_cds(
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
             k_values=DEFAULT_K_VALUES,
             use_strand=USE_STRAND,
             gene_biotypes=CDS_GENE_BIOTYPES,
@@ -482,7 +518,7 @@ class LeaderboardService:
         exon_stratifier = self.evaluator.build_stratifier(
             branch_result=exon_result,
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
             use_strand=USE_STRAND,
             gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
@@ -490,7 +526,7 @@ class LeaderboardService:
         cds_stratifier = self.evaluator.build_stratifier(
             branch_result=cds_result,
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
             use_strand=USE_STRAND,
             gene_biotypes=CDS_GENE_BIOTYPES,
             transcript_types=CDS_TRANSCRIPT_TYPES,
@@ -499,7 +535,7 @@ class LeaderboardService:
         exon_detailed = self.evaluator.build_detailed_info(
             branch_result=exon_result,
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
             use_strand=USE_STRAND,
             gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
@@ -507,7 +543,7 @@ class LeaderboardService:
         cds_detailed = self.evaluator.build_detailed_info(
             branch_result=cds_result,
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
             use_strand=USE_STRAND,
             gene_biotypes=CDS_GENE_BIOTYPES,
             transcript_types=CDS_TRANSCRIPT_TYPES,
@@ -544,7 +580,7 @@ class LeaderboardService:
         gene_biotypes: Iterable[str],
         transcript_types: Iterable[str],
     ) -> dict[str, object]:
-        gt_df = self.evaluator._read_gff(self.ground_truth_path)
+        gt_df = self._ground_truth_df.copy() if self._ground_truth_df is not None else self.evaluator._read_gff(self.ground_truth_path)
         normalized_gene_biotypes = self.evaluator._normalize_string_filter(gene_biotypes)
         normalized_transcript_types = self.evaluator._normalize_string_filter(transcript_types)
         true_rows = self.evaluator._extract_true_transcript_rows(
@@ -616,7 +652,7 @@ class LeaderboardService:
     def _build_prediction_index(self, pred_gff: Path | pd.DataFrame) -> dict[str, dict[str, object]]:
         common = self.evaluator._prepare_common_data(
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
             k_values=[0],
             gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
@@ -701,7 +737,13 @@ class LeaderboardService:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _prediction_files(self) -> list[Path]:
+    def _prediction_files_and_mapping(self) -> tuple[list[Path], dict[str, Any]]:
+        remote_files, remote_mapping = self._download_remote_prediction_assets()
+        if remote_files:
+            return remote_files, remote_mapping
+        return self._local_prediction_files(), self._local_mapping()
+
+    def _local_prediction_files(self) -> list[Path]:
         if not self.predictions_dir.exists():
             return []
         return sorted(
@@ -713,15 +755,119 @@ class LeaderboardService:
             key=lambda path: path.name.lower(),
         )
 
-    def _display_name_for_path(self, path: Path) -> str:
+    def _local_mapping(self) -> dict[str, Any]:
         if self.mapping_path.exists():
-            mapping = json.loads(self.mapping_path.read_text(encoding="utf-8"))
-            if path.name in mapping:
-                value = mapping[path.name]
-                if isinstance(value, str):
-                    return value
-                if isinstance(value, dict) and isinstance(value.get("display_name"), str):
-                    return value["display_name"]
+            return json.loads(self.mapping_path.read_text(encoding="utf-8"))
+        return {}
+
+    def _download_remote_prediction_assets(self) -> tuple[list[Path], dict[str, Any]]:
+        try:
+            repo_dir = self.remote_cache_dir / "repo"
+            predictions_out_dir = self.remote_cache_dir / "predictions"
+            if repo_dir.exists():
+                shutil.rmtree(repo_dir)
+            if predictions_out_dir.exists():
+                shutil.rmtree(predictions_out_dir)
+            self.remote_cache_dir.mkdir(parents=True, exist_ok=True)
+
+            subprocess.run(
+                ["git", "clone", "--depth", "1", SOURCE_REPOSITORY_URL, str(repo_dir)],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            mapping_path = repo_dir / "model_name_mapping.json"
+            mapping = json.loads(mapping_path.read_text(encoding="utf-8")) if mapping_path.exists() else {}
+            if not isinstance(mapping, dict):
+                mapping = {}
+
+            predictions_src_dir = repo_dir / "predictions"
+            predictions_out_dir.mkdir(parents=True, exist_ok=True)
+            valid_suffixes = {".gff", ".gff3", ".txt", ".gtf"}
+            files: list[Path] = []
+
+            def _candidate_paths(filename: str) -> list[Path]:
+                parsed = Path(filename)
+                stem = parsed.stem
+                return [
+                    predictions_src_dir / filename,
+                    repo_dir / filename,
+                    predictions_src_dir / f"{stem}.txt",
+                    predictions_src_dir / f"{stem}.gff",
+                    predictions_src_dir / f"{stem}.gff3",
+                    predictions_src_dir / f"{stem}.gtf",
+                ]
+
+            file_names = sorted(mapping.keys()) if mapping else sorted(
+                [path.name for path in predictions_src_dir.iterdir() if path.is_file()]
+            )
+            for filename in file_names:
+                parsed = Path(filename)
+                if parsed.suffix.lower() not in valid_suffixes:
+                    continue
+                source_path = next((path for path in _candidate_paths(filename) if path.exists() and path.is_file()), None)
+                if source_path is None:
+                    continue
+                destination = predictions_out_dir / filename
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_path, destination)
+                files.append(destination)
+            return files, mapping
+        except Exception:
+            try:
+                return self._download_remote_prediction_assets_raw()
+            except Exception:
+                return [], {}
+
+    def _download_remote_prediction_assets_raw(self) -> tuple[list[Path], dict[str, Any]]:
+        mapping_url = f"{SOURCE_REPOSITORY_RAW_BASE}/model_name_mapping.json"
+        with urlopen(mapping_url, timeout=30) as response:
+            mapping = json.loads(response.read().decode("utf-8"))
+        if not isinstance(mapping, dict):
+            return [], {}
+        predictions_out_dir = self.remote_cache_dir / "predictions"
+        if predictions_out_dir.exists():
+            shutil.rmtree(predictions_out_dir)
+        predictions_out_dir.mkdir(parents=True, exist_ok=True)
+        valid_suffixes = {".gff", ".gff3", ".txt", ".gtf"}
+        files: list[Path] = []
+        for filename in sorted(mapping.keys()):
+            parsed = Path(filename)
+            if parsed.suffix.lower() not in valid_suffixes:
+                continue
+            destination = predictions_out_dir / filename
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            stem = parsed.stem
+            raw_candidates = [
+                f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{filename}",
+                f"{SOURCE_REPOSITORY_RAW_BASE}/{filename}",
+                f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{stem}.txt",
+                f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{stem}.gff",
+                f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{stem}.gff3",
+                f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{stem}.gtf",
+            ]
+            payload = None
+            for raw_url in raw_candidates:
+                try:
+                    with urlopen(raw_url, timeout=60) as response:
+                        payload = response.read()
+                    break
+                except URLError:
+                    continue
+            if payload is None:
+                continue
+            destination.write_bytes(payload)
+            files.append(destination)
+        return files, mapping
+
+    def _display_name_for_path(self, path: Path) -> str:
+        mapping = self._display_name_mapping or self._local_mapping()
+        if path.name in mapping:
+            value = mapping[path.name]
+            if isinstance(value, str):
+                return value
+            if isinstance(value, dict) and isinstance(value.get("display_name"), str):
+                return value["display_name"]
         return path.stem.replace("_", " ")
 
     def _canonical_transcript_type(self, value: str) -> str:

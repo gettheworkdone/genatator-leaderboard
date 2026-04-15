@@ -1,5 +1,8 @@
-# Bundled prediction files
+# Prediction cache
 
-These prediction files are bundled locally so that the Space archive contains the permanent leaderboard inputs needed for the current public leaderboard state.
+This directory is intentionally not used for committed permanent prediction files.
+At runtime, the service downloads predictions and mapping from:
 
-The associated display-name mapping is stored in `../model_name_mapping.json`.
+- https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git
+
+Downloaded files are cached under `leaderboard_data/.remote_predictions_cache/`.
