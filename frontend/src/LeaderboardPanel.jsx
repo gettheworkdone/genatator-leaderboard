@@ -482,9 +482,8 @@ export default function LeaderboardPanel() {
           {showProgress ? (
             <Stack spacing={1.1}>
               <LinearProgress
-                variant={status?.total_models ? "buffer" : "indeterminate"}
-                value={progressValue}
-                valueBuffer={progressPreviewValue}
+                variant={status?.total_models ? "determinate" : "indeterminate"}
+                value={progressPreviewValue}
               />
               <Typography color="text.secondary">
                 {status?.message || "Loading leaderboard…"}

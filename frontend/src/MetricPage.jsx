@@ -13,13 +13,13 @@ import {
 import CalculateIcon from "@mui/icons-material/Calculate";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
-const EVALUATE_SNIPPET = `How to use this metric with Evaluate
-This metric supports a Python API through Hugging Face Evaluate.
-
-1) Install dependencies: pip install evaluate
-2) Load the metric from Hugging Face repo shmelev/genatator-leaderboard.
-3) Pass local file paths as plain strings and compute everything in one call.
-
+const EVALUATE_SNIPPET = `# How to use this metric with Evaluate
+# This metric supports a Python API through Hugging Face Evaluate.
+#
+# 1) Install dependencies: pip install evaluate
+# 2) Load the metric from Hugging Face repo shmelev/genatator-leaderboard.
+# 3) Pass local file paths as plain strings and compute everything in one call.
+#
 import evaluate
 
 metric = evaluate.load("shmelev/genatator-leaderboard")
@@ -27,7 +27,7 @@ metric = evaluate.load("shmelev/genatator-leaderboard")
 pred_gff_path = "/tmp/predictions.gff"
 true_gff_path = "/tmp/reference.gff"
 
-"""Compute both branches through Evaluate."""
+# Compute both branches through Evaluate.
 result = metric.compute(
     pred_gff=pred_gff_path,
     true_gff=true_gff_path,
@@ -37,10 +37,10 @@ result = metric.compute(
 print(result["exon"][250]["interval-level"]["f1"])
 print(result["cds"][250]["segmentation-level"]["f1"])
 
-"""Use stratifier output returned by Evaluate."""
+# Use stratifier output returned by Evaluate.
 print(result["stratifier"]["exon"]["transcript_type"]["mRNA"][250])
 
-"""Use detailed transcript output returned by Evaluate."""
+# Use detailed transcript output returned by Evaluate.
 print(len(result["detailed"]["exon"]), list(result["detailed"]["exon"].keys())[:3])`;
 
 function SectionTitle({ icon = null, title, subtitle = null }) {
