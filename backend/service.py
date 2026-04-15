@@ -388,24 +388,6 @@ class LeaderboardService:
                     finished_at=time.time(),
                 )
                 return
-            gt_text = self.ground_truth_path.read_text(encoding="utf-8")
-            gt_df, gt_report = gff_text_to_dataframe_with_report(gt_text)
-            if not gt_df.empty:
-                self._ground_truth_input = gt_df
-                self._set_state(
-                    message=(
-                        f"Ground truth loaded ({gt_report['kept_rows']} kept rows, "
-                        f"{gt_report['dropped_rows']} dropped rows)."
-                    ),
-                )
-            else:
-                self._ground_truth_input = self.ground_truth_path
-                self._set_state(
-                    message=(
-                        "Ground truth sanitation returned 0 rows; falling back to raw file parser."
-                    ),
-                )
-
             self._set_state(
                 stage="loading-ground-truth",
                 message="Loading ground-truth annotations and preparing branch-specific indices.",
@@ -433,37 +415,22 @@ class LeaderboardService:
             for idx, pred_file in enumerate(files, start=1):
                 display_name = self._display_name_for_path(pred_file)
                 model_id = pred_file.stem
-                pred_df, pred_report = gff_text_to_dataframe_with_report(pred_file.read_text(encoding="utf-8"))
+                pred_df = gff_text_to_dataframe(pred_file.read_text(encoding="utf-8"))
                 if pred_df.empty:
-                    failed_models.append(f"{display_name}: parsed rows=0 (dropped={pred_report['dropped_rows']})")
                     self._set_state(
                         message=f"Skipping {display_name}: prediction file parsed to empty data.",
                     )
                     continue
-                try:
-                    self._set_state(
-                        current_model=display_name,
-                        message=(
-                            f"Computing leaderboard metrics for {display_name} ({idx}/{len(files)}). "
-                            f"kept={pred_report['kept_rows']}, dropped={pred_report['dropped_rows']}"
-                        ),
-                    )
-                    new_models[model_id] = self._compute_model_bundle(
-                        model_id=model_id,
-                        display_name=display_name,
-                        pred_gff=pred_df,
-                        temporary=False,
-                        source_file=pred_file.name,
-                    )
-                    self._set_state(completed_models=idx)
-                except Exception as model_exc:
-                    failed_models.append(f"{display_name}: {type(model_exc).__name__}: {model_exc}")
-                    self._set_state(message=f"Failed model {display_name}: {model_exc}")
-
-            if not new_models:
-                raise RuntimeError(
-                    "No prediction models were processed successfully. "
-                    + ("; ".join(failed_models[:6]) if failed_models else "Unknown parsing/evaluation failure.")
+                self._set_state(
+                    current_model=display_name,
+                    message=f"Computing leaderboard metrics for {display_name} ({idx}/{len(files)}).",
+                )
+                new_models[model_id] = self._compute_model_bundle(
+                    model_id=model_id,
+                    display_name=display_name,
+                    pred_gff=pred_df,
+                    temporary=False,
+                    source_file=pred_file.name,
                 )
 
             with self._lock:
