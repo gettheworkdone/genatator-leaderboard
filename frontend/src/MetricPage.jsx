@@ -18,50 +18,30 @@ This metric supports a Python API through Hugging Face Evaluate.
 
 1) Install dependencies: pip install evaluate
 2) Load the metric from Hugging Face repo shmelev/genatator-leaderboard.
-3) Compute metric values and build stratifier/detailed outputs locally.
+3) Pass local file paths as plain strings and compute everything in one call.
 
 import evaluate
-from gene_level_final_final_fix import GeneLevelEvaluator
 
 metric = evaluate.load("shmelev/genatator-leaderboard")
-evaluator = GeneLevelEvaluator()
 
-pred_gff_path = "./dummy/predictions.gff"
-true_gff_path = "./dummy/reference.gff"
-pred_gff_text = open(pred_gff_path).read()
-true_gff_text = open(true_gff_path).read()
+pred_gff_path = "/tmp/predictions.gff"
+true_gff_path = "/tmp/reference.gff"
 
 """Compute both branches through Evaluate."""
 result = metric.compute(
-    pred_gff=pred_gff_text,
-    true_gff=true_gff_text,
+    pred_gff=pred_gff_path,
+    true_gff=true_gff_path,
     k_values=list(range(0, 501)),
 )
 
 print(result["exon"][250]["interval-level"]["f1"])
 print(result["cds"][250]["segmentation-level"]["f1"])
 
-"""Build stratifier rows locally from exon branch results."""
-stratifier = evaluator.build_stratifier(
-    branch_result=result["exon"],
-    pred_gff=pred_gff_path,
-    true_gff=true_gff_path,
-    use_strand=True,
-    gene_biotypes=["protein_coding", "lncRNA"],
-    transcript_types=["mRNA", "lnc_RNA"],
-)
-print(stratifier["transcript_type"]["mRNA"][250])
+"""Use stratifier output returned by Evaluate."""
+print(result["stratifier"]["exon"]["transcript_type"]["mRNA"][250])
 
-"""Build transcript-level detailed information locally."""
-detailed = evaluator.build_detailed_info(
-    branch_result=result["exon"],
-    pred_gff=pred_gff_path,
-    true_gff=true_gff_path,
-    use_strand=True,
-    gene_biotypes=["protein_coding", "lncRNA"],
-    transcript_types=["mRNA", "lnc_RNA"],
-)
-print(len(detailed), list(detailed.keys())[:3])`;
+"""Use detailed transcript output returned by Evaluate."""
+print(len(result["detailed"]["exon"]), list(result["detailed"]["exon"].keys())[:3])`;
 
 function SectionTitle({ icon = null, title, subtitle = null }) {
   return (
