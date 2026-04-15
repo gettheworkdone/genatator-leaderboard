@@ -389,9 +389,8 @@ class LeaderboardService:
                 )
                 return
 
-            self._ground_truth_df = gff_text_to_dataframe(self.ground_truth_path.read_text(encoding="utf-8"))
-            if self._ground_truth_df is None or self._ground_truth_df.empty:
-                raise ValueError("Ground-truth GFF is empty or invalid after parsing.")
+            parsed_ground_truth = gff_text_to_dataframe(self.ground_truth_path.read_text(encoding="utf-8"))
+            self._ground_truth_df = parsed_ground_truth if parsed_ground_truth is not None and not parsed_ground_truth.empty else None
 
             self._set_state(
                 stage="loading-ground-truth",
