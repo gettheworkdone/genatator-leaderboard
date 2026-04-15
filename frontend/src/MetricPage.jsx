@@ -330,8 +330,15 @@ export default function MetricPage() {
 
           {error ? <Alert severity="error">{error}</Alert> : null}
 
-          <Grid container spacing={2} alignItems="stretch">
-            <Grid item xs={12} md={5} sx={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", md: "minmax(0, 5fr) minmax(0, 5fr) minmax(0, 2fr)" },
+              gap: 2,
+              width: "100%",
+            }}
+          >
+            <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
               <Typography variant="subtitle2" sx={{ mb: 0.8 }}>
                 Prediction GFF
               </Typography>
@@ -351,8 +358,8 @@ export default function MetricPage() {
                   onChange={(event) => setPredFile(event.target.files?.[0] || null)}
                 />
               </Button>
-            </Grid>
-            <Grid item xs={12} md={5} sx={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+            </Box>
+            <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
               <Typography variant="subtitle2" sx={{ mb: 0.8 }}>
                 Ground-truth GFF
               </Typography>
@@ -372,8 +379,8 @@ export default function MetricPage() {
                   onChange={(event) => setTrueFile(event.target.files?.[0] || null)}
                 />
               </Button>
-            </Grid>
-            <Grid item xs={12} md={2} sx={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+            </Box>
+            <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
               <Typography variant="subtitle2" sx={{ mb: 0.8 }}>
                 Active k
               </Typography>
@@ -395,8 +402,8 @@ export default function MetricPage() {
                 inputProps={{ min: 0, max: 500 }}
                 sx={{ "& .MuiInputBase-root": { height: 56 } }}
               />
-            </Grid>
-          </Grid>
+            </Box>
+          </Box>
 
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
             <Button variant="contained" onClick={compute} disabled={loading} startIcon={<CalculateIcon />}>
