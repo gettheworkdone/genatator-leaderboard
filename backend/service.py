@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from queue import Queue
 from typing import Any, Iterable, Optional
+from urllib.error import URLError
+from urllib.request import urlopen
 
 import pandas as pd
 
@@ -130,6 +132,7 @@ class LeaderboardService:
         self._permanent_models: dict[str, ModelBundle] = {}
         self._temporary_models: dict[str, ModelBundle] = {}
         self._ground_truth_indices: dict[str, dict[str, object]] = {}
+        self._ground_truth_df: pd.DataFrame | None = None
         self._initializer_started = False
         self._upload_queue: Queue[dict[str, object]] = Queue()
         threading.Thread(target=self._upload_worker, daemon=True).start()
@@ -148,6 +151,7 @@ class LeaderboardService:
                 self._permanent_models = {}
                 self._temporary_models = {}
                 self._ground_truth_indices = {}
+                self._ground_truth_df = None
             self._initializer_started = True
             self._state = ServiceState(
                 running=True,
@@ -385,6 +389,9 @@ class LeaderboardService:
                 return
             self._effective_ground_truth_path = self._prepare_sanitized_ground_truth()
 
+            parsed_ground_truth = gff_text_to_dataframe(self.ground_truth_path.read_text(encoding="utf-8"))
+            self._ground_truth_df = parsed_ground_truth if parsed_ground_truth is not None and not parsed_ground_truth.empty else None
+
             self._set_state(
                 stage="loading-ground-truth",
                 message="Loading ground-truth annotations and preparing branch-specific indices.",
@@ -459,7 +466,7 @@ class LeaderboardService:
                 with self._lock:
                     self._state.upload_current = str(job["model_name"])
                     self._state.upload_queue_length = self._upload_queue.qsize()
-                if not self.ground_truth_path.exists():
+                if self._ground_truth_df is None and not self.ground_truth_path.exists():
                     continue
                 pred_df = gff_text_to_dataframe(str(job["pred_gff_text"]))
                 model_id = f"tmp-{_slugify(str(job['model_name']))}-{job['job_id'][:8]}"
