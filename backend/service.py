@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from queue import Queue
 from typing import Any, Iterable, Optional
+from urllib.error import URLError
+from urllib.request import urlopen
 
 import pandas as pd
 
@@ -128,6 +130,7 @@ class LeaderboardService:
         self._permanent_models: dict[str, ModelBundle] = {}
         self._temporary_models: dict[str, ModelBundle] = {}
         self._ground_truth_indices: dict[str, dict[str, object]] = {}
+        self._ground_truth_df: pd.DataFrame | None = None
         self._initializer_started = False
         self._upload_queue: Queue[dict[str, object]] = Queue()
         threading.Thread(target=self._upload_worker, daemon=True).start()
@@ -146,6 +149,7 @@ class LeaderboardService:
                 self._permanent_models = {}
                 self._temporary_models = {}
                 self._ground_truth_indices = {}
+                self._ground_truth_df = None
             self._initializer_started = True
             self._state = ServiceState(
                 running=True,
@@ -382,6 +386,9 @@ class LeaderboardService:
                 )
                 return
 
+            parsed_ground_truth = gff_text_to_dataframe(self.ground_truth_path.read_text(encoding="utf-8"))
+            self._ground_truth_df = parsed_ground_truth if parsed_ground_truth is not None and not parsed_ground_truth.empty else None
+
             self._set_state(
                 stage="loading-ground-truth",
                 message="Loading ground-truth annotations and preparing branch-specific indices.",
@@ -408,6 +415,7 @@ class LeaderboardService:
             for idx, pred_file in enumerate(files, start=1):
                 display_name = self._display_name_for_path(pred_file)
                 model_id = pred_file.stem
+                pred_df = gff_text_to_dataframe(pred_file.read_text(encoding="utf-8"))
                 self._set_state(
                     current_model=display_name,
                     message=f"Computing leaderboard metrics for {display_name} ({idx}/{len(files)}).",
@@ -415,7 +423,7 @@ class LeaderboardService:
                 new_models[model_id] = self._compute_model_bundle(
                     model_id=model_id,
                     display_name=display_name,
-                    pred_gff=pred_file,
+                    pred_gff=pred_df,
                     temporary=False,
                     source_file=pred_file.name,
                 )
@@ -450,7 +458,7 @@ class LeaderboardService:
                 with self._lock:
                     self._state.upload_current = str(job["model_name"])
                     self._state.upload_queue_length = self._upload_queue.qsize()
-                if not self.ground_truth_path.exists():
+                if self._ground_truth_df is None and not self.ground_truth_path.exists():
                     continue
                 pred_df = gff_text_to_dataframe(str(job["pred_gff_text"]))
                 model_id = f"tmp-{_slugify(str(job['model_name']))}-{job['job_id'][:8]}"
@@ -486,7 +494,7 @@ class LeaderboardService:
     ) -> ModelBundle:
         exon_result = self.evaluator.evaluate_gff_exon(
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
             k_values=DEFAULT_K_VALUES,
             use_strand=USE_STRAND,
             gene_biotypes=EXON_GENE_BIOTYPES,
@@ -494,7 +502,7 @@ class LeaderboardService:
         )
         cds_result = self.evaluator.evaluate_gff_cds(
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
             k_values=DEFAULT_K_VALUES,
             use_strand=USE_STRAND,
             gene_biotypes=CDS_GENE_BIOTYPES,
@@ -506,7 +514,7 @@ class LeaderboardService:
         exon_stratifier = self.evaluator.build_stratifier(
             branch_result=exon_result,
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
             use_strand=USE_STRAND,
             gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
@@ -514,7 +522,7 @@ class LeaderboardService:
         cds_stratifier = self.evaluator.build_stratifier(
             branch_result=cds_result,
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
             use_strand=USE_STRAND,
             gene_biotypes=CDS_GENE_BIOTYPES,
             transcript_types=CDS_TRANSCRIPT_TYPES,
@@ -523,7 +531,7 @@ class LeaderboardService:
         exon_detailed = self.evaluator.build_detailed_info(
             branch_result=exon_result,
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
             use_strand=USE_STRAND,
             gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
@@ -531,7 +539,7 @@ class LeaderboardService:
         cds_detailed = self.evaluator.build_detailed_info(
             branch_result=cds_result,
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
             use_strand=USE_STRAND,
             gene_biotypes=CDS_GENE_BIOTYPES,
             transcript_types=CDS_TRANSCRIPT_TYPES,
@@ -568,7 +576,7 @@ class LeaderboardService:
         gene_biotypes: Iterable[str],
         transcript_types: Iterable[str],
     ) -> dict[str, object]:
-        gt_df = self.evaluator._read_gff(self.ground_truth_path)
+        gt_df = self._ground_truth_df.copy() if self._ground_truth_df is not None else self.evaluator._read_gff(self.ground_truth_path)
         normalized_gene_biotypes = self.evaluator._normalize_string_filter(gene_biotypes)
         normalized_transcript_types = self.evaluator._normalize_string_filter(transcript_types)
         true_rows = self.evaluator._extract_true_transcript_rows(
@@ -640,7 +648,7 @@ class LeaderboardService:
     def _build_prediction_index(self, pred_gff: Path | pd.DataFrame) -> dict[str, dict[str, object]]:
         common = self.evaluator._prepare_common_data(
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_df if self._ground_truth_df is not None else self.ground_truth_path,
             k_values=[0],
             gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
