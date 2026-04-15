@@ -6,6 +6,7 @@ import math
 import subprocess
 import threading
 import time
+import traceback
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,7 +19,7 @@ import pandas as pd
 
 from gene_level_final_final_fix import GeneLevelEvaluator
 
-from .gff_io import gff_text_to_dataframe
+from .gff_io import gff_text_to_dataframe, gff_text_to_dataframe_with_report
 
 
 SOURCE_REPOSITORY_URL = "https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git"
@@ -132,7 +133,7 @@ class LeaderboardService:
         self._permanent_models: dict[str, ModelBundle] = {}
         self._temporary_models: dict[str, ModelBundle] = {}
         self._ground_truth_indices: dict[str, dict[str, object]] = {}
-        self._ground_truth_df: pd.DataFrame | None = None
+        self._ground_truth_input: Path | pd.DataFrame = self.ground_truth_path
         self._initializer_started = False
         self._upload_queue: Queue[dict[str, object]] = Queue()
         threading.Thread(target=self._upload_worker, daemon=True).start()
@@ -151,7 +152,7 @@ class LeaderboardService:
                 self._permanent_models = {}
                 self._temporary_models = {}
                 self._ground_truth_indices = {}
-                self._ground_truth_df = None
+                self._ground_truth_input = self.ground_truth_path
             self._initializer_started = True
             self._state = ServiceState(
                 running=True,
@@ -387,10 +388,23 @@ class LeaderboardService:
                     finished_at=time.time(),
                 )
                 return
-            self._effective_ground_truth_path = self._prepare_sanitized_ground_truth()
-
-            parsed_ground_truth = gff_text_to_dataframe(self.ground_truth_path.read_text(encoding="utf-8"))
-            self._ground_truth_df = parsed_ground_truth if parsed_ground_truth is not None and not parsed_ground_truth.empty else None
+            gt_text = self.ground_truth_path.read_text(encoding="utf-8")
+            gt_df, gt_report = gff_text_to_dataframe_with_report(gt_text)
+            if not gt_df.empty:
+                self._ground_truth_input = gt_df
+                self._set_state(
+                    message=(
+                        f"Ground truth loaded ({gt_report['kept_rows']} kept rows, "
+                        f"{gt_report['dropped_rows']} dropped rows)."
+                    ),
+                )
+            else:
+                self._ground_truth_input = self.ground_truth_path
+                self._set_state(
+                    message=(
+                        "Ground truth sanitation returned 0 rows; falling back to raw file parser."
+                    ),
+                )
 
             self._set_state(
                 stage="loading-ground-truth",
@@ -415,27 +429,42 @@ class LeaderboardService:
             )
 
             new_models: dict[str, ModelBundle] = {}
+            failed_models: list[str] = []
             for idx, pred_file in enumerate(files, start=1):
                 display_name = self._display_name_for_path(pred_file)
                 model_id = pred_file.stem
-                pred_df = gff_text_to_dataframe(pred_file.read_text(encoding="utf-8"))
+                pred_df, pred_report = gff_text_to_dataframe_with_report(pred_file.read_text(encoding="utf-8"))
                 if pred_df.empty:
+                    failed_models.append(f"{display_name}: parsed rows=0 (dropped={pred_report['dropped_rows']})")
                     self._set_state(
                         message=f"Skipping {display_name}: prediction file parsed to empty data.",
                     )
                     continue
-                self._set_state(
-                    current_model=display_name,
-                    message=f"Computing leaderboard metrics for {display_name} ({idx}/{len(files)}).",
+                try:
+                    self._set_state(
+                        current_model=display_name,
+                        message=(
+                            f"Computing leaderboard metrics for {display_name} ({idx}/{len(files)}). "
+                            f"kept={pred_report['kept_rows']}, dropped={pred_report['dropped_rows']}"
+                        ),
+                    )
+                    new_models[model_id] = self._compute_model_bundle(
+                        model_id=model_id,
+                        display_name=display_name,
+                        pred_gff=pred_df,
+                        temporary=False,
+                        source_file=pred_file.name,
+                    )
+                    self._set_state(completed_models=idx)
+                except Exception as model_exc:
+                    failed_models.append(f"{display_name}: {type(model_exc).__name__}: {model_exc}")
+                    self._set_state(message=f"Failed model {display_name}: {model_exc}")
+
+            if not new_models:
+                raise RuntimeError(
+                    "No prediction models were processed successfully. "
+                    + ("; ".join(failed_models[:6]) if failed_models else "Unknown parsing/evaluation failure.")
                 )
-                new_models[model_id] = self._compute_model_bundle(
-                    model_id=model_id,
-                    display_name=display_name,
-                    pred_gff=pred_df,
-                    temporary=False,
-                    source_file=pred_file.name,
-                )
-                self._set_state(completed_models=idx)
 
             with self._lock:
                 self._permanent_models = new_models
@@ -449,12 +478,13 @@ class LeaderboardService:
                 finished_at=time.time(),
             )
         except Exception as exc:  # pragma: no cover - defensive
+            trace_tail = traceback.format_exc(limit=5)
             self._set_state(
                 running=False,
                 ready=False,
                 stage="error",
-                error=str(exc),
-                message="Leaderboard initialization failed.",
+                error=f"{type(exc).__name__}: {exc}\n{trace_tail}",
+                message=f"Leaderboard initialization failed: {type(exc).__name__}: {exc}",
                 current_model=None,
                 finished_at=time.time(),
             )
@@ -502,7 +532,7 @@ class LeaderboardService:
     ) -> ModelBundle:
         exon_result = self.evaluator.evaluate_gff_exon(
             pred_gff=pred_gff,
-            true_gff=self._effective_ground_truth_path,
+            true_gff=self._ground_truth_input,
             k_values=DEFAULT_K_VALUES,
             use_strand=USE_STRAND,
             gene_biotypes=EXON_GENE_BIOTYPES,
@@ -510,7 +540,7 @@ class LeaderboardService:
         )
         cds_result = self.evaluator.evaluate_gff_cds(
             pred_gff=pred_gff,
-            true_gff=self._effective_ground_truth_path,
+            true_gff=self._ground_truth_input,
             k_values=DEFAULT_K_VALUES,
             use_strand=USE_STRAND,
             gene_biotypes=CDS_GENE_BIOTYPES,
@@ -522,7 +552,7 @@ class LeaderboardService:
         exon_stratifier = self.evaluator.build_stratifier(
             branch_result=exon_result,
             pred_gff=pred_gff,
-            true_gff=self._effective_ground_truth_path,
+            true_gff=self._ground_truth_input,
             use_strand=USE_STRAND,
             gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
@@ -530,7 +560,7 @@ class LeaderboardService:
         cds_stratifier = self.evaluator.build_stratifier(
             branch_result=cds_result,
             pred_gff=pred_gff,
-            true_gff=self._effective_ground_truth_path,
+            true_gff=self._ground_truth_input,
             use_strand=USE_STRAND,
             gene_biotypes=CDS_GENE_BIOTYPES,
             transcript_types=CDS_TRANSCRIPT_TYPES,
@@ -539,7 +569,7 @@ class LeaderboardService:
         exon_detailed = self.evaluator.build_detailed_info(
             branch_result=exon_result,
             pred_gff=pred_gff,
-            true_gff=self._effective_ground_truth_path,
+            true_gff=self._ground_truth_input,
             use_strand=USE_STRAND,
             gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
@@ -547,7 +577,7 @@ class LeaderboardService:
         cds_detailed = self.evaluator.build_detailed_info(
             branch_result=cds_result,
             pred_gff=pred_gff,
-            true_gff=self._effective_ground_truth_path,
+            true_gff=self._ground_truth_input,
             use_strand=USE_STRAND,
             gene_biotypes=CDS_GENE_BIOTYPES,
             transcript_types=CDS_TRANSCRIPT_TYPES,
@@ -584,7 +614,7 @@ class LeaderboardService:
         gene_biotypes: Iterable[str],
         transcript_types: Iterable[str],
     ) -> dict[str, object]:
-        gt_df = self.evaluator._read_gff(self._effective_ground_truth_path)
+        gt_df = self.evaluator._read_gff(self._ground_truth_input)
         normalized_gene_biotypes = self.evaluator._normalize_string_filter(gene_biotypes)
         normalized_transcript_types = self.evaluator._normalize_string_filter(transcript_types)
         true_rows = self.evaluator._extract_true_transcript_rows(
@@ -656,7 +686,7 @@ class LeaderboardService:
     def _build_prediction_index(self, pred_gff: Path | pd.DataFrame) -> dict[str, dict[str, object]]:
         common = self.evaluator._prepare_common_data(
             pred_gff=pred_gff,
-            true_gff=self._effective_ground_truth_path,
+            true_gff=self._ground_truth_input,
             k_values=[0],
             gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
@@ -806,19 +836,6 @@ class LeaderboardService:
             return files, normalized_map
         except Exception:
             return [], {}
-
-    def _prepare_sanitized_ground_truth(self) -> Path:
-        try:
-            parsed = gff_text_to_dataframe(self.ground_truth_path.read_text(encoding="utf-8"))
-            if parsed.empty:
-                return self.ground_truth_path
-            self.sanitized_ground_truth_path.write_text(
-                parsed.to_csv(sep="\t", header=False, index=False),
-                encoding="utf-8",
-            )
-            return self.sanitized_ground_truth_path
-        except Exception:
-            return self.ground_truth_path
 
     def _display_name_for_path(self, path: Path) -> str:
         mapping = self._display_name_mapping or self._local_mapping()
