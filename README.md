@@ -7,7 +7,7 @@ sdk: docker
 app_port: 7860
 pinned: false
 license: apache-2.0
-short_description: Biologically rigorous gene-level leaderboard for ab initio genome annotation
+short_description: Gene-level leaderboard for ab initio genome annotation
 ---
 
 # GENATATOR gene-level metric and leaderboard
