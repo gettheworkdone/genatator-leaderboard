@@ -16,15 +16,14 @@ import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 const EVALUATE_SNIPPET = `How to use this metric with Evaluate
 This metric supports a Python API through Hugging Face Evaluate.
 
-1) Clone this Space repository locally.
-2) Install dependencies: pip install evaluate datasets
-3) Load the local metric script and run metric, stratifier, and detailed outputs.
+1) Install dependencies: pip install evaluate requests
+2) Load the metric from Hugging Face repo shmelev/genatator-leaderboard.
+3) Call metric compute and Space API endpoints.
 
 import evaluate
-from gene_level_final_final_fix import GeneLevelEvaluator
+import requests
 
-metric = evaluate.load("./backend/evaluate_gene_level_metric.py")
-evaluator = GeneLevelEvaluator()
+metric = evaluate.load("shmelev/genatator-leaderboard")
 
 pred_gff = "./dummy/predictions.gff"
 true_gff = "./dummy/reference.gff"
@@ -41,37 +40,27 @@ result = metric.compute(
 print(result["exon"][250]["interval-level"]["f1"])
 print(result["cds"][250]["segmentation-level"]["f1"])
 
-"""Run exon evaluation directly through GeneLevelEvaluator."""
-exon_result = evaluator.evaluate_gff_exon(
-    pred_gff=pred_gff,
-    true_gff=true_gff,
-    k_values=range(0, 501),
-    use_strand=True,
-    gene_biotypes=["protein_coding", "lncRNA"],
-    transcript_types=["mRNA", "lnc_RNA"],
-)
+base_url = "https://shmelev-genatator-leaderboard.hf.space"
 
-"""Build stratifier table from the computed exon branch result."""
-stratifier_output = evaluator.build_stratifier(
-    branch_result=exon_result,
-    pred_gff=pred_gff,
-    true_gff=true_gff,
-    use_strand=True,
-    gene_biotypes=["protein_coding", "lncRNA"],
-    transcript_types=["mRNA", "lnc_RNA"],
-)
-print(stratifier_output["strand"]["+"][250])
+"""Get leaderboard overview and pick one model id."""
+overview = requests.get(f"{base_url}/api/leaderboard/overview", timeout=30).json()
+model_id = overview["models"][0]["model_id"]
 
-"""Build transcript-level evidence for detailed inspection."""
-detailed_info_output = evaluator.build_detailed_info(
-    branch_result=exon_result,
-    pred_gff=pred_gff,
-    true_gff=true_gff,
-    use_strand=True,
-    gene_biotypes=["protein_coding", "lncRNA"],
-    transcript_types=["mRNA", "lnc_RNA"],
-)
-print(len(detailed_info_output), list(detailed_info_output.keys())[:3])`;
+"""Read stratified metrics from API."""
+stratifier = requests.get(
+    f"{base_url}/api/leaderboard/stratifier",
+    params={"model_id": model_id, "branch": "exon", "rule": "transcript_type", "k": 250},
+    timeout=30,
+).json()
+print(stratifier["rows"][:3])
+
+"""Read transcript-level evidence from API."""
+detail = requests.get(
+    f"{base_url}/api/leaderboard/gene/gene-LOC124908093",
+    params={"branch": "exon", "k": 250, "model_ids": model_id},
+    timeout=30,
+).json()
+print(detail["gene"]["gene_id"], len(detail["gene"]["transcripts"]))`;
 
 function SectionTitle({ icon = null, title, subtitle = null }) {
   return (
@@ -297,7 +286,7 @@ export default function MetricPage() {
         </Stack>
       </Paper>
 
-      <Grid container spacing={2} justifyContent="center" alignItems="stretch">
+      <Grid container spacing={2} justifyContent="center" alignItems="stretch" sx={{ maxWidth: 1400, mx: "auto" }}>
         <Grid item xs={12} md={4}>
           <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, height: "100%" }}>
             <Stack spacing={2.0}>
@@ -338,8 +327,8 @@ export default function MetricPage() {
 
           {error ? <Alert severity="error">{error}</Alert> : null}
 
-          <Grid container spacing={2} justifyContent="center" alignItems="flex-end">
-            <Grid item xs={12} md={5}>
+          <Grid container spacing={2} justifyContent="center" alignItems="stretch" sx={{ maxWidth: 1400, mx: "auto" }}>
+            <Grid item xs={12} md={5} sx={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
               <Typography variant="subtitle2" sx={{ mb: 0.8 }}>
                 Prediction GFF
               </Typography>
@@ -360,7 +349,7 @@ export default function MetricPage() {
                 />
               </Button>
             </Grid>
-            <Grid item xs={12} md={5}>
+            <Grid item xs={12} md={5} sx={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
               <Typography variant="subtitle2" sx={{ mb: 0.8 }}>
                 Ground-truth GFF
               </Typography>
@@ -381,12 +370,13 @@ export default function MetricPage() {
                 />
               </Button>
             </Grid>
-            <Grid item xs={12} md={2}>
+            <Grid item xs={12} md={2} sx={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
               <Typography variant="subtitle2" sx={{ mb: 0.8 }}>
                 Active k
               </Typography>
               <TextField
                 type="number"
+                size="small"
                 fullWidth
                 value={selectedKInput}
                 onChange={(event) => setSelectedKInput(event.target.value)}

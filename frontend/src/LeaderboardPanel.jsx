@@ -208,9 +208,9 @@ export default function LeaderboardPanel() {
     const id = window.setInterval(() => {
       fetchStatus();
       fetchOverview();
-    }, 3000);
+    }, status?.running || status?.upload_current ? 1000 : 5000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [status?.running, status?.upload_current]);
 
   useEffect(() => {
     if (!overview) {
@@ -387,6 +387,21 @@ export default function LeaderboardPanel() {
     }
     return Math.round(((status.completed_models || 0) / status.total_models) * 100);
   }, [status]);
+  const progressPreviewValue = useMemo(() => {
+    if (!status?.total_models) {
+      return 0;
+    }
+    const message = `${status?.message || ""}`;
+    const matched = message.match(/\((\d+)\s*\/\s*(\d+)\)/);
+    if (matched) {
+      const current = Number(matched[1]);
+      const total = Number(matched[2]);
+      if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
+        return Math.max(progressValue, Math.round((current / total) * 100));
+      }
+    }
+    return progressValue;
+  }, [status, progressValue]);
 
   return (
     <Stack spacing={3.2}>
@@ -465,7 +480,11 @@ export default function LeaderboardPanel() {
           </Box>
           {showProgress ? (
             <Stack spacing={1.1}>
-              <LinearProgress variant={status?.total_models ? "determinate" : "indeterminate"} value={progressValue} />
+              <LinearProgress
+                variant={status?.total_models ? "buffer" : "indeterminate"}
+                value={progressValue}
+                valueBuffer={progressPreviewValue}
+              />
               <Typography color="text.secondary">
                 {status?.message || "Loading leaderboard…"}
               </Typography>
@@ -753,11 +772,12 @@ export default function LeaderboardPanel() {
             />
             <BranchTabs value={stratBranch} onChange={setStratBranch} />
           </Stack>
-          <Grid container spacing={2} alignItems="flex-end">
+          <Grid container spacing={2} alignItems="stretch">
             <Grid item xs={12} md={5}>
               <TextField
                 select
                 label="Model"
+                size="small"
                 fullWidth
                 value={stratModel}
                 onChange={(event) => setStratModel(event.target.value)}
@@ -771,6 +791,7 @@ export default function LeaderboardPanel() {
               <TextField
                 select
                 label="Rule"
+                size="small"
                 fullWidth
                 value={stratRule}
                 onChange={(event) => setStratRule(event.target.value)}
@@ -781,7 +802,7 @@ export default function LeaderboardPanel() {
               </TextField>
             </Grid>
             <Grid item xs={12} md={3}>
-              <TextField label="Active k" value={selectedK} fullWidth disabled />
+              <TextField label="Active k" value={selectedK} fullWidth disabled size="small" />
             </Grid>
           </Grid>
           {!stratifier?.rows?.length ? (
@@ -827,10 +848,11 @@ export default function LeaderboardPanel() {
             <BranchTabs value={detailBranch} onChange={(next) => { setDetailBranch(next); setGenePage(1); setExpandedGene(false); }} />
           </Stack>
 
-          <Grid container spacing={2} alignItems="flex-end">
+          <Grid container spacing={2} alignItems="stretch">
             <Grid item xs={12} md={8}>
               <TextField
                 fullWidth
+                size="small"
                 label="Search ground-truth genes, transcripts, chromosome, or type"
                 value={geneQuery}
                 onChange={(event) => { setGeneQuery(event.target.value); setGenePage(1); }}
@@ -838,7 +860,7 @@ export default function LeaderboardPanel() {
               />
             </Grid>
             <Grid item xs={12} md={4}>
-              <TextField label="Active k" value={selectedK} fullWidth disabled />
+              <TextField label="Active k" value={selectedK} fullWidth disabled size="small" />
             </Grid>
           </Grid>
 
