@@ -931,20 +931,27 @@ export default function LeaderboardPanel() {
                               </AccordionSummary>
                               <AccordionDetails>
                                 <Stack spacing={1.2}>
-                                  <Grid container spacing={2}>
-                                    <Grid item xs={12} lg={6}>
+                                  <Box
+                                    sx={{
+                                      display: "grid",
+                                      gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1fr) minmax(0, 1fr)" },
+                                      gap: 2,
+                                      width: "100%",
+                                    }}
+                                  >
+                                    <Box>
                                       <Typography variant="subtitle2" sx={{ mb: 0.4 }}>Ground-truth exon segments</Typography>
                                       <SegmentBox segments={transcript.exon_segments} />
-                                    </Grid>
-                                    <Grid item xs={12} lg={6}>
+                                    </Box>
+                                    <Box>
                                       <Typography variant="subtitle2" sx={{ mb: 0.4 }}>Ground-truth CDS segments</Typography>
                                       <SegmentBox segments={transcript.cds_segments} />
-                                    </Grid>
-                                  </Grid>
+                                    </Box>
+                                  </Box>
                                   {!transcript.matched_predictions.length ? (
                                     <Alert severity="info">No selected models match this transcript at the current branch.</Alert>
                                   ) : (
-                                    <Box className="result-table-wrap">
+                                    <Box className="result-table-wrap" sx={{ width: "100%", m: 0 }}>
                                       <Table className="metric-table details-table">
                                         <TableHead>
                                           <TableRow>
