@@ -416,6 +416,11 @@ class LeaderboardService:
                 display_name = self._display_name_for_path(pred_file)
                 model_id = pred_file.stem
                 pred_df = gff_text_to_dataframe(pred_file.read_text(encoding="utf-8"))
+                if pred_df.empty:
+                    self._set_state(
+                        message=f"Skipping {display_name}: prediction file parsed to empty data.",
+                    )
+                    continue
                 self._set_state(
                     current_model=display_name,
                     message=f"Computing leaderboard metrics for {display_name} ({idx}/{len(files)}).",
