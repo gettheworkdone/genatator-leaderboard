@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 import json
+import math
+import shutil
 import threading
 import time
 import uuid
@@ -9,6 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from queue import Queue
 from typing import Any, Iterable, Optional
+from urllib.error import URLError
+from urllib.request import urlopen
 
 import pandas as pd
 
@@ -17,7 +21,10 @@ from gene_level_final_final_fix import GeneLevelEvaluator
 from .gff_io import gff_text_to_dataframe
 
 
-SOURCE_REPOSITORY_URL = "https://github.com/alexeyshmelev/genatator-leaderboard.git"
+SOURCE_REPOSITORY_URL = "https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions"
+SOURCE_REPOSITORY_RAW_BASE = (
+    "https://raw.githubusercontent.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions/main"
+)
 DEFAULT_K_VALUES = list(range(0, 501))
 DEFAULT_K = 250
 USE_STRAND = True
@@ -47,6 +54,18 @@ def _slugify(text: str) -> str:
     cleaned = "".join(ch.lower() if ch.isalnum() else "-" for ch in text.strip())
     cleaned = "-".join(part for part in cleaned.split("-") if part)
     return cleaned or "model"
+
+
+def _safe_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    return int(numeric)
 
 
 @dataclass
@@ -104,6 +123,8 @@ class LeaderboardService:
         self.ground_truth_path = self.data_dir / "ground_truth" / "chr20.gff"
         self.predictions_dir = self.data_dir / "predictions"
         self.mapping_path = self.data_dir / "model_name_mapping.json"
+        self.remote_cache_dir = self.data_dir / ".remote_predictions_cache"
+        self._display_name_mapping: dict[str, Any] = {}
 
         self.evaluator = GeneLevelEvaluator()
         self._lock = threading.Lock()
@@ -279,17 +300,21 @@ class LeaderboardService:
                 if detail_entry is None:
                     continue
                 interval_map = {
-                    item["pred_id"]: int(item["min_k"])
+                    item["pred_id"]: safe_value
                     for item in detail_entry["interval-level"].get("predictions", [])
+                    if (safe_value := _safe_int(item.get("min_k"))) is not None
                 }
                 segmentation_map = {
-                    item["pred_id"]: int(item["min_k"])
+                    item["pred_id"]: safe_value
                     for item in detail_entry["segmentation-level"].get("predictions", [])
+                    if (safe_value := _safe_int(item.get("min_k"))) is not None
                 }
                 for pred_id in sorted(set(interval_map) | set(segmentation_map)):
                     pred_meta = bundle.prediction_index.get(pred_id, {})
                     interval_min_k = interval_map.get(pred_id)
                     segmentation_min_k = segmentation_map.get(pred_id)
+                    min_k_candidates = [value for value in (interval_min_k, segmentation_min_k) if value is not None]
+                    min_k = min(min_k_candidates) if min_k_candidates else None
                     matches.append(
                         {
                             "model_id": bundle.model_id,
@@ -302,16 +327,13 @@ class LeaderboardService:
                             "strand": pred_meta.get("strand"),
                             "exon_segments": pred_meta.get("exon_segments", []),
                             "cds_segments": pred_meta.get("cds_segments", []),
-                            "interval_min_k": interval_min_k,
-                            "interval_matched_at_k": interval_min_k is not None and interval_min_k <= selected_k,
-                            "segmentation_min_k": segmentation_min_k,
-                            "segmentation_matched_at_k": segmentation_min_k is not None and segmentation_min_k <= selected_k,
+                            "min_k": min_k,
+                            "matched_at_k": min_k is not None and min_k <= selected_k,
                         }
                     )
             matches.sort(
                 key=lambda item: (
-                    item["interval_min_k"] if item["interval_min_k"] is not None else 10**9,
-                    item["segmentation_min_k"] if item["segmentation_min_k"] is not None else 10**9,
+                    item["min_k"] if item["min_k"] is not None else 10**9,
                     item["model_name"].lower(),
                     item["pred_id"],
                 )
@@ -372,7 +394,8 @@ class LeaderboardService:
                 ),
             }
 
-            files = self._prediction_files()
+            files, mapping = self._prediction_files_and_mapping()
+            self._display_name_mapping = mapping
             self._set_state(
                 stage="computing-models",
                 message="Computing biologically rigorous gene-level metrics for bundled prediction files.",
@@ -701,7 +724,13 @@ class LeaderboardService:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _prediction_files(self) -> list[Path]:
+    def _prediction_files_and_mapping(self) -> tuple[list[Path], dict[str, Any]]:
+        remote_files, remote_mapping = self._download_remote_prediction_assets()
+        if remote_files:
+            return remote_files, remote_mapping
+        return self._local_prediction_files(), self._local_mapping()
+
+    def _local_prediction_files(self) -> list[Path]:
         if not self.predictions_dir.exists():
             return []
         return sorted(
@@ -713,15 +742,65 @@ class LeaderboardService:
             key=lambda path: path.name.lower(),
         )
 
-    def _display_name_for_path(self, path: Path) -> str:
+    def _local_mapping(self) -> dict[str, Any]:
         if self.mapping_path.exists():
-            mapping = json.loads(self.mapping_path.read_text(encoding="utf-8"))
-            if path.name in mapping:
-                value = mapping[path.name]
-                if isinstance(value, str):
-                    return value
-                if isinstance(value, dict) and isinstance(value.get("display_name"), str):
-                    return value["display_name"]
+            return json.loads(self.mapping_path.read_text(encoding="utf-8"))
+        return {}
+
+    def _download_remote_prediction_assets(self) -> tuple[list[Path], dict[str, Any]]:
+        try:
+            mapping_url = f"{SOURCE_REPOSITORY_RAW_BASE}/model_name_mapping.json"
+            with urlopen(mapping_url, timeout=30) as response:
+                mapping = json.loads(response.read().decode("utf-8"))
+            if not isinstance(mapping, dict):
+                return [], {}
+
+            predictions_out_dir = self.remote_cache_dir / "predictions"
+            if predictions_out_dir.exists():
+                shutil.rmtree(predictions_out_dir)
+            predictions_out_dir.mkdir(parents=True, exist_ok=True)
+
+            valid_suffixes = {".gff", ".gff3", ".txt", ".gtf"}
+            files: list[Path] = []
+            for filename in sorted(mapping.keys()):
+                parsed = Path(filename)
+                if parsed.suffix.lower() not in valid_suffixes:
+                    continue
+                destination = predictions_out_dir / filename
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                stem = parsed.stem
+                raw_candidates = [
+                    f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{filename}",
+                    f"{SOURCE_REPOSITORY_RAW_BASE}/{filename}",
+                    f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{stem}.txt",
+                    f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{stem}.gff",
+                    f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{stem}.gff3",
+                    f"{SOURCE_REPOSITORY_RAW_BASE}/predictions/{stem}.gtf",
+                ]
+                payload = None
+                for raw_url in raw_candidates:
+                    try:
+                        with urlopen(raw_url, timeout=60) as response:
+                            payload = response.read()
+                        break
+                    except URLError:
+                        continue
+                if payload is None:
+                    continue
+                destination.write_bytes(payload)
+                files.append(destination)
+            return files, mapping
+        except Exception:
+            return [], {}
+
+    def _display_name_for_path(self, path: Path) -> str:
+        mapping = self._display_name_mapping or self._local_mapping()
+        if path.name in mapping:
+            value = mapping[path.name]
+            if isinstance(value, str):
+                return value
+            if isinstance(value, dict) and isinstance(value.get("display_name"), str):
+                return value["display_name"]
         return path.stem.replace("_", " ")
 
     def _canonical_transcript_type(self, value: str) -> str:
