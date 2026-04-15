@@ -34,3 +34,9 @@ def gff_text_to_dataframe(text: str) -> pd.DataFrame:
     df["start"] = df["start"].astype(int).astype(str)
     df["end"] = df["end"].astype(int).astype(str)
     return df
+
+
+def gff_text_to_dataframe_with_report(text: str) -> tuple[pd.DataFrame, dict[str, int]]:
+    """Backward-compatible helper kept for older imports."""
+    df = gff_text_to_dataframe(text)
+    return df, {"raw_rows": int(len(df)), "kept_rows": int(len(df)), "dropped_rows": 0}
