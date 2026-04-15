@@ -1,0 +1,954 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Alert,
+  Autocomplete,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Grid,
+  LinearProgress,
+  MenuItem,
+  Paper,
+  Stack,
+  Tab,
+  Tabs,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TextField,
+  Typography,
+} from "@mui/material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import ApiIcon from "@mui/icons-material/Api";
+import InsightsIcon from "@mui/icons-material/Insights";
+import FunctionsIcon from "@mui/icons-material/Functions";
+import DatasetLinkedIcon from "@mui/icons-material/DatasetLinked";
+import ManageSearchIcon from "@mui/icons-material/ManageSearch";
+import SearchIcon from "@mui/icons-material/Search";
+import LeaderboardIcon from "@mui/icons-material/Leaderboard";
+import BiotechIcon from "@mui/icons-material/Biotech";
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+
+const CHART_COLORS = [
+  "#0f766e",
+  "#0ea5e9",
+  "#16a34a",
+  "#f59e0b",
+  "#ef4444",
+  "#7c3aed",
+  "#0891b2",
+  "#1d4ed8",
+  "#ea580c",
+];
+
+const METRIC_LABELS = {
+  interval_f1: "F1 without segmentation",
+  interval_precision: "Precision without segmentation",
+  interval_recall: "Recall without segmentation",
+  interval_mi: "MI without segmentation",
+  segmentation_f1: "F1 with segmentation",
+  segmentation_precision: "Precision with segmentation",
+  segmentation_recall: "Recall with segmentation",
+  segmentation_mi: "MI with segmentation",
+};
+
+const SORT_METRICS = [
+  { value: "exon_interval_f1", label: "Rank by exon F1 without segmentation" },
+  { value: "exon_interval_mi", label: "Rank by exon MI without segmentation" },
+  { value: "exon_segmentation_f1", label: "Rank by exon F1 with segmentation" },
+  { value: "exon_segmentation_mi", label: "Rank by exon MI with segmentation" },
+  { value: "cds_interval_f1", label: "Rank by CDS F1 without segmentation" },
+  { value: "cds_interval_mi", label: "Rank by CDS MI without segmentation" },
+  { value: "cds_segmentation_f1", label: "Rank by CDS F1 with segmentation" },
+  { value: "cds_segmentation_mi", label: "Rank by CDS MI with segmentation" },
+];
+
+const API_SNIPPET = `POST /api/leaderboard/upload
+GET  /api/leaderboard/overview
+GET  /api/leaderboard/full-metrics?branch=exon&k=250&model_ids=model_a,model_b
+GET  /api/leaderboard/stratifier?model_id=model_a&branch=exon&rule=transcript_type&k=250
+GET  /api/leaderboard/genes?branch=exon&page=1&page_size=25&query=
+GET  /api/leaderboard/gene/<gene_id>?branch=exon&k=250&model_ids=model_a,model_b`;
+
+function SectionTitle({ icon = null, title, subtitle = null }) {
+  return (
+    <Stack spacing={0.6}>
+      <Stack direction="row" spacing={1} alignItems="center">
+        {icon}
+        <Typography variant="h5">{title}</Typography>
+      </Stack>
+      {subtitle ? <Typography color="text.secondary">{subtitle}</Typography> : null}
+    </Stack>
+  );
+}
+
+function CodePanel({ children }) {
+  return (
+    <Box component="pre" className="code-panel mono">
+      {children}
+    </Box>
+  );
+}
+
+function formatScore(value, digits = 3) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return "—";
+  }
+  if (Number.isInteger(value)) {
+    return `${value}`;
+  }
+  return Number(value).toFixed(digits);
+}
+
+function formatSegments(segments) {
+  if (!segments || segments.length === 0) {
+    return "—";
+  }
+  return segments.map(([start, end]) => `[${start}, ${end}]`).join(", ");
+}
+
+function SegmentBox({ segments }) {
+  const value = formatSegments(segments);
+  return (
+    <Box className="segment-scrollbox mono" title={value}>
+      {value}
+    </Box>
+  );
+}
+
+function BranchTabs({ value, onChange }) {
+  return (
+    <Tabs value={value} onChange={(_, next) => onChange(next)}>
+      <Tab value="exon" label="Exon branch" />
+      <Tab value="cds" label="CDS branch" />
+    </Tabs>
+  );
+}
+
+
+function modelValueAtK(overview, model, branch, metricKey, selectedK) {
+  if (!overview || !model?.curves?.[branch]?.[metricKey]) {
+    return null;
+  }
+  const index = Math.max(0, Math.min(Number(selectedK) || 0, overview.k_values.length - 1));
+  return model.curves[branch][metricKey][index];
+}
+
+function MetricChip({ label, value, temporary = false }) {
+  return (
+    <Chip
+      size="small"
+      variant={temporary ? "outlined" : "filled"}
+      label={`${label}: ${value ? "✓" : "✗"}`}
+    />
+  );
+}
+
+export default function LeaderboardPanel() {
+  const [status, setStatus] = useState(null);
+  const [overview, setOverview] = useState(null);
+  const [selectedK, setSelectedK] = useState(250);
+  const [sortMetric, setSortMetric] = useState("exon_segmentation_f1");
+  const [graphBranch, setGraphBranch] = useState("exon");
+  const [graphMetric, setGraphMetric] = useState("segmentation_f1");
+  const [selectedModels, setSelectedModels] = useState([]);
+  const [fullBranch, setFullBranch] = useState("exon");
+  const [fullMetrics, setFullMetrics] = useState(null);
+  const [stratBranch, setStratBranch] = useState("exon");
+  const [stratModel, setStratModel] = useState("");
+  const [stratRule, setStratRule] = useState("transcript_type");
+  const [stratifier, setStratifier] = useState(null);
+  const [detailBranch, setDetailBranch] = useState("exon");
+  const [geneQuery, setGeneQuery] = useState("");
+  const [genePage, setGenePage] = useState(1);
+  const [geneList, setGeneList] = useState({ items: [], total: 0, page: 1, page_size: 25 });
+  const [geneDetails, setGeneDetails] = useState({});
+  const [expandedGene, setExpandedGene] = useState(false);
+  const [uploadModelName, setUploadModelName] = useState("");
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadMessage, setUploadMessage] = useState("");
+  const uploadInputRef = useRef(null);
+
+  const fetchStatus = async () => {
+    const response = await fetch("/api/leaderboard/status");
+    const payload = await response.json();
+    setStatus(payload);
+  };
+
+  const fetchOverview = async () => {
+    const response = await fetch("/api/leaderboard/overview");
+    const payload = await response.json();
+    setOverview(payload);
+  };
+
+  useEffect(() => {
+    fetchStatus();
+    fetchOverview();
+    const id = window.setInterval(() => {
+      fetchStatus();
+      fetchOverview();
+    }, 3000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!overview) {
+      return;
+    }
+    setSelectedK((current) => current ?? overview.default_k ?? 250);
+    if (overview.models?.length > 0) {
+      setSelectedModels((current) => {
+        const allIds = overview.models.map((item) => item.model_id);
+        if (!current.length) {
+          return allIds;
+        }
+        const missing = allIds.filter((item) => !current.includes(item));
+        return missing.length ? [...current, ...missing] : current;
+      });
+    }
+    if (!stratModel && overview.models?.length > 0) {
+      setStratModel(overview.models[0].model_id);
+    }
+  }, [overview, stratModel]);
+
+  useEffect(() => {
+    if (!overview || !overview.models?.length) {
+      setFullMetrics(null);
+      return;
+    }
+    const params = new URLSearchParams({
+      branch: fullBranch,
+      k: `${selectedK}`,
+    });
+    if (selectedModels.length > 0) {
+      params.set("model_ids", selectedModels.join(","));
+    }
+    fetch(`/api/leaderboard/full-metrics?${params.toString()}`)
+      .then((response) => response.json())
+      .then((payload) => setFullMetrics(payload))
+      .catch(() => setFullMetrics(null));
+  }, [overview, fullBranch, selectedK, selectedModels]);
+
+  useEffect(() => {
+    if (!stratModel) {
+      setStratifier(null);
+      return;
+    }
+    const params = new URLSearchParams({
+      model_id: stratModel,
+      branch: stratBranch,
+      rule: stratRule,
+      k: `${selectedK}`,
+    });
+    fetch(`/api/leaderboard/stratifier?${params.toString()}`)
+      .then((response) => response.json())
+      .then((payload) => setStratifier(payload))
+      .catch(() => setStratifier(null));
+  }, [stratModel, stratBranch, stratRule, selectedK]);
+
+  useEffect(() => {
+    const params = new URLSearchParams({
+      branch: detailBranch,
+      query: geneQuery,
+      page: `${genePage}`,
+      page_size: "25",
+    });
+    fetch(`/api/leaderboard/genes?${params.toString()}`)
+      .then((response) => response.json())
+      .then((payload) => setGeneList(payload))
+      .catch(() => setGeneList({ items: [], total: 0, page: 1, page_size: 25 }));
+  }, [detailBranch, geneQuery, genePage]);
+
+  const mainRows = useMemo(() => {
+    if (!overview?.models) {
+      return [];
+    }
+    const rows = overview.models.map((model) => ({
+      model_id: model.model_id,
+      display_name: model.display_name,
+      temporary: model.temporary,
+      exon_interval_f1: modelValueAtK(overview, model, "exon", "interval_f1", selectedK),
+      exon_interval_mi: modelValueAtK(overview, model, "exon", "interval_mi", selectedK),
+      exon_segmentation_f1: modelValueAtK(overview, model, "exon", "segmentation_f1", selectedK),
+      exon_segmentation_mi: modelValueAtK(overview, model, "exon", "segmentation_mi", selectedK),
+      cds_interval_f1: modelValueAtK(overview, model, "cds", "interval_f1", selectedK),
+      cds_interval_mi: modelValueAtK(overview, model, "cds", "interval_mi", selectedK),
+      cds_segmentation_f1: modelValueAtK(overview, model, "cds", "segmentation_f1", selectedK),
+      cds_segmentation_mi: modelValueAtK(overview, model, "cds", "segmentation_mi", selectedK),
+    }));
+    rows.sort((a, b) => {
+      const av = Number(a[sortMetric] ?? -Infinity);
+      const bv = Number(b[sortMetric] ?? -Infinity);
+      if (bv !== av) return bv - av;
+      return a.display_name.localeCompare(b.display_name);
+    });
+    return rows;
+  }, [overview, selectedK, sortMetric]);
+
+  const chartModels = useMemo(() => {
+    if (!overview?.models) {
+      return [];
+    }
+    if (!selectedModels.length) {
+      return overview.models;
+    }
+    return overview.models.filter((item) => selectedModels.includes(item.model_id));
+  }, [overview, selectedModels]);
+
+  const chartData = useMemo(() => {
+    if (!overview?.k_values || !chartModels.length) {
+      return [];
+    }
+    return overview.k_values.map((k, idx) => {
+      const row = { k };
+      for (const model of chartModels) {
+        row[model.model_id] = model.curves?.[graphBranch]?.[graphMetric]?.[idx] ?? null;
+      }
+      return row;
+    });
+  }, [overview, chartModels, graphBranch, graphMetric]);
+
+  const fetchGeneDetail = async (geneId) => {
+    const cacheKey = `${detailBranch}|${geneId}|${selectedK}|${selectedModels.join(",")}`;
+    if (geneDetails[cacheKey]) {
+      return;
+    }
+    const params = new URLSearchParams({
+      branch: detailBranch,
+      k: `${selectedK}`,
+    });
+    if (selectedModels.length > 0) {
+      params.set("model_ids", selectedModels.join(","));
+    }
+    const response = await fetch(`/api/leaderboard/gene/${encodeURIComponent(geneId)}?${params.toString()}`);
+    const payload = await response.json();
+    setGeneDetails((current) => ({ ...current, [cacheKey]: payload }));
+  };
+
+  const reloadLeaderboard = async () => {
+    await fetch("/api/leaderboard/reload", { method: "POST" });
+    fetchStatus();
+    fetchOverview();
+  };
+
+  const submitUpload = async () => {
+    setUploadMessage("");
+    if (!uploadFile) {
+      setUploadMessage("Please choose a prediction GFF file.");
+      return;
+    }
+    const pred_gff_text = await uploadFile.text();
+    const response = await fetch("/api/leaderboard/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model_name: uploadModelName,
+        pred_gff_text,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      setUploadMessage(payload.detail || "Upload failed.");
+      return;
+    }
+    setUploadMessage(payload.message || "Temporary model submitted.");
+    setUploadModelName("");
+    setUploadFile(null);
+    if (uploadInputRef.current) {
+      uploadInputRef.current.value = "";
+    }
+  };
+
+  const showProgress = status?.running || status?.upload_current;
+  const progressValue = useMemo(() => {
+    if (!status?.total_models) {
+      return 0;
+    }
+    return Math.round(((status.completed_models || 0) / status.total_models) * 100);
+  }, [status]);
+
+  return (
+    <Stack spacing={3.2}>
+      <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 } }}>
+        <Stack spacing={2.0}>
+          <SectionTitle
+            icon={<LeaderboardIcon color="primary" />}
+            title="API + leaderboard"
+            subtitle="Interactive, biologically rigorous comparison of ab initio genome annotation models evaluated with the fixed gene-level metric implementation."
+          />
+          <Typography color="text.secondary">
+            The leaderboard is built around exact interval agreement rather than token-level surrogates. In the exon branch, a
+            predicted transcript is rewarded only when its exon-defined interval matches a reference transcript within tolerance
+            <span className="mono"> k </span> and, under the stricter segmentation layer, when the exon structure itself is correctly
+            reconstructed. In the CDS branch, the same logic is applied to coding sequence intervals and exact CDS segmentation.
+            This two-branch view is biologically motivated because exon reconstruction measures transcript architecture as a whole,
+            whereas CDS reconstruction isolates the protein-coding core where boundary errors can induce frameshifts or remove
+            coding sequence.
+          </Typography>
+          <Typography color="text.secondary">
+            For each branch, the leaderboard reports interval-level precision, recall, F1, and a multi-isoform score (MI). The
+            interval layer measures whether a model localizes transcript objects correctly. The segmentation layer applies an
+            additional exact-structure filter to the interval matches, thereby quantifying whether the internal exon or CDS parts
+            are also reconstructed correctly. MI counts genes for which at least two distinct reference isoforms are recovered by at
+            least two distinct predictions, making the benchmark sensitive not only to single-best transcript recovery but also to
+            isoform diversity.
+          </Typography>
+          <Typography color="text.secondary">
+            The panels below let you inspect the benchmark at multiple resolutions: model-level summary scores, metric curves over
+            the full range of k, complete metric tables for a chosen operating point, stratified analyses over biologically relevant
+            groups, and transcript-level inspection of matched predictions for every ground-truth gene in the benchmark.
+          </Typography>
+          {showProgress ? (
+            <Stack spacing={1.1}>
+              <LinearProgress variant={status?.total_models ? "determinate" : "indeterminate"} value={progressValue} />
+              <Typography color="text.secondary">
+                {status?.message || "Loading leaderboard…"}
+              </Typography>
+            </Stack>
+          ) : null}
+          {status?.error ? <Alert severity="error">{status.error}</Alert> : null}
+          {status?.missing_ground_truth ? (
+            <Alert severity="warning" action={<Button onClick={reloadLeaderboard} startIcon={<RefreshIcon />}>Reload</Button>}>
+              {status.message}
+            </Alert>
+          ) : null}
+        </Stack>
+      </Paper>
+
+      <Box className="top-two-column-grid">
+        <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
+          <Stack spacing={1.8}>
+            <SectionTitle
+              icon={<UploadFileIcon color="primary" />}
+              title="Temporary custom submission"
+              subtitle="Upload a prediction GFF and a model name to embed a temporary result across all leaderboard panels."
+            />
+            <Typography color="text.secondary">
+              Temporary submissions are processed in memory only. They are not written to persistent Space storage and disappear
+              after restart. To consolidate a model permanently on the public leaderboard, open a pull request to the repository used
+              for bundled prediction files.
+            </Typography>
+            <TextField
+              label="Model name"
+              value={uploadModelName}
+              onChange={(event) => setUploadModelName(event.target.value)}
+              fullWidth
+            />
+            <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
+              {uploadFile ? uploadFile.name : "Choose prediction GFF"}
+              <input
+                ref={uploadInputRef}
+                hidden
+                type="file"
+                accept=".gff,.gff3,.gtf,.txt"
+                onChange={(event) => setUploadFile(event.target.files?.[0] || null)}
+              />
+            </Button>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.1}>
+              <Button variant="contained" onClick={submitUpload}>Submit temporary model</Button>
+              <Button variant="outlined" onClick={reloadLeaderboard} startIcon={<RefreshIcon />}>Reload bundled models</Button>
+            </Stack>
+            {uploadMessage ? <Alert severity="info">{uploadMessage}</Alert> : null}
+            <Alert severity="info">
+              Permanent repository: <span className="mono">{overview?.source_repository_url || "https://github.com/alexeyshmelev/genatator-leaderboard.git"}</span>
+            </Alert>
+          </Stack>
+        </Paper>
+
+        <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
+          <Stack spacing={1.8}>
+            <SectionTitle
+              icon={<ApiIcon color="primary" />}
+              title="REST API"
+              subtitle="These endpoints expose the same leaderboard state used by the interface."
+            />
+            <CodePanel>{API_SNIPPET}</CodePanel>
+          </Stack>
+        </Paper>
+      </Box>
+
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
+        <Stack spacing={2.0}>
+          <Stack
+            direction={{ xs: "column", lg: "row" }}
+            spacing={1.2}
+            justifyContent="space-between"
+            alignItems={{ xs: "stretch", lg: "center" }}
+          >
+            <SectionTitle
+              icon={<FunctionsIcon color="primary" />}
+              title="Main metrics"
+              subtitle="The table is evaluated at a user-selected tolerance k and shows both exon and CDS branches simultaneously."
+            />
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
+              <TextField
+                label="k"
+                type="number"
+                value={selectedK}
+                onChange={(event) => setSelectedK(Math.max(0, Math.min(500, Number(event.target.value) || 0)))}
+                inputProps={{ min: 0, max: 500 }}
+                sx={{ width: 120 }}
+              />
+              <TextField
+                select
+                label="Sort rows"
+                value={sortMetric}
+                onChange={(event) => setSortMetric(event.target.value)}
+                sx={{ minWidth: 320 }}
+              >
+                {SORT_METRICS.map((item) => (
+                  <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+          </Stack>
+
+          {!overview?.models?.length ? (
+            <Alert severity="info">No leaderboard models are available yet.</Alert>
+          ) : (
+            <Box className="result-table-wrap">
+              <Table className="metric-table main-metrics-table">
+                <TableHead>
+                  <TableRow>
+                    <TableCell rowSpan={2}>Rank</TableCell>
+                    <TableCell rowSpan={2}>Model</TableCell>
+                    <TableCell colSpan={4} align="center">Exon</TableCell>
+                    <TableCell colSpan={4} align="center">CDS</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell>F1 w/o seg.</TableCell>
+                    <TableCell>MI w/o seg.</TableCell>
+                    <TableCell>F1 with seg.</TableCell>
+                    <TableCell>MI with seg.</TableCell>
+                    <TableCell>F1 w/o seg.</TableCell>
+                    <TableCell>MI w/o seg.</TableCell>
+                    <TableCell>F1 with seg.</TableCell>
+                    <TableCell>MI with seg.</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {mainRows.map((row, index) => (
+                    <TableRow key={row.model_id}>
+                      <TableCell>{index + 1}</TableCell>
+                      <TableCell>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Typography fontWeight={760}>{row.display_name}</Typography>
+                          {row.temporary ? <Chip size="small" variant="outlined" label="temporary" /> : null}
+                        </Stack>
+                      </TableCell>
+                      <TableCell>{formatScore(row.exon_interval_f1)}</TableCell>
+                      <TableCell>{formatScore(row.exon_interval_mi, 0)}</TableCell>
+                      <TableCell>{formatScore(row.exon_segmentation_f1)}</TableCell>
+                      <TableCell>{formatScore(row.exon_segmentation_mi, 0)}</TableCell>
+                      <TableCell>{formatScore(row.cds_interval_f1)}</TableCell>
+                      <TableCell>{formatScore(row.cds_interval_mi, 0)}</TableCell>
+                      <TableCell>{formatScore(row.cds_segmentation_f1)}</TableCell>
+                      <TableCell>{formatScore(row.cds_segmentation_mi, 0)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Box>
+          )}
+        </Stack>
+      </Paper>
+
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
+        <Stack spacing={2.0}>
+          <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
+            <SectionTitle
+              icon={<InsightsIcon color="primary" />}
+              title="Metric curves"
+              subtitle="Choose the branch, metric, and models to inspect smooth trajectories over k = 0…500. Click the chart to set the active operating point."
+            />
+            <Stack direction={{ xs: "column", lg: "row" }} spacing={1.2} alignItems={{ lg: "center" }}>
+              <BranchTabs value={graphBranch} onChange={setGraphBranch} />
+              <TextField
+                select
+                label="Metric"
+                value={graphMetric}
+                onChange={(event) => setGraphMetric(event.target.value)}
+                sx={{ minWidth: 240 }}
+              >
+                {Object.entries(METRIC_LABELS).map(([value, label]) => (
+                  <MenuItem key={value} value={value}>{label}</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+          </Stack>
+
+          <Autocomplete
+            multiple
+            options={overview?.models || []}
+            value={(overview?.models || []).filter((item) => selectedModels.includes(item.model_id))}
+            disableCloseOnSelect
+            getOptionLabel={(option) => option.display_name}
+            onChange={(_, value) => setSelectedModels(value.map((item) => item.model_id))}
+            renderInput={(params) => <TextField {...params} label="Models shown on the graph" />}
+          />
+
+          <Box sx={{ width: "100%", height: 420 }}>
+            <ResponsiveContainer>
+              <LineChart
+                data={chartData}
+                margin={{ top: 10, right: 24, bottom: 10, left: 8 }}
+                onClick={(event) => {
+                  if (event && event.activeLabel !== undefined && event.activeLabel !== null) {
+                    setSelectedK(Number(event.activeLabel));
+                  }
+                }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="k" type="number" domain={[0, 500]} allowDecimals={false} />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <ReferenceLine x={selectedK} stroke="#334155" strokeDasharray="4 4" />
+                {chartModels.map((model, index) => (
+                  <Line
+                    key={model.model_id}
+                    dataKey={model.model_id}
+                    name={model.display_name}
+                    stroke={CHART_COLORS[index % CHART_COLORS.length]}
+                    dot={false}
+                    type="monotone"
+                    strokeWidth={2.4}
+                    isAnimationActive={false}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </Box>
+        </Stack>
+      </Paper>
+
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
+        <Stack spacing={2.0}>
+          <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
+            <SectionTitle
+              icon={<DatasetLinkedIcon color="primary" />}
+              title="Full metrics"
+              subtitle="Complete metric table at the active k for the models selected in the graph panel."
+            />
+            <BranchTabs value={fullBranch} onChange={setFullBranch} />
+          </Stack>
+          {!fullMetrics?.rows?.length ? (
+            <Alert severity="info">No full-metric rows are available for the current selection.</Alert>
+          ) : (
+            <Box className="result-table-wrap">
+              <Table className="metric-table full-metrics-table">
+                <TableHead>
+                  <TableRow>
+                    <TableCell rowSpan={2}>Model</TableCell>
+                    <TableCell colSpan={4} align="center">Interval level</TableCell>
+                    <TableCell colSpan={4} align="center">Segmentation level</TableCell>
+                    <TableCell colSpan={3} align="center">Exact part level</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell>Precision</TableCell>
+                    <TableCell>Recall</TableCell>
+                    <TableCell>F1</TableCell>
+                    <TableCell>MI</TableCell>
+                    <TableCell>Precision</TableCell>
+                    <TableCell>Recall</TableCell>
+                    <TableCell>F1</TableCell>
+                    <TableCell>MI</TableCell>
+                    <TableCell>Precision</TableCell>
+                    <TableCell>Recall</TableCell>
+                    <TableCell>F1</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {fullMetrics.rows.map((row) => (
+                    <TableRow key={row.model_id}>
+                      <TableCell>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Typography fontWeight={760}>{row.display_name}</Typography>
+                          {row.temporary ? <Chip size="small" variant="outlined" label="temporary" /> : null}
+                        </Stack>
+                      </TableCell>
+                      <TableCell>{formatScore(row.interval_precision)}</TableCell>
+                      <TableCell>{formatScore(row.interval_recall)}</TableCell>
+                      <TableCell>{formatScore(row.interval_f1)}</TableCell>
+                      <TableCell>{formatScore(row.interval_mi, 0)}</TableCell>
+                      <TableCell>{formatScore(row.segmentation_precision)}</TableCell>
+                      <TableCell>{formatScore(row.segmentation_recall)}</TableCell>
+                      <TableCell>{formatScore(row.segmentation_f1)}</TableCell>
+                      <TableCell>{formatScore(row.segmentation_mi, 0)}</TableCell>
+                      <TableCell>{formatScore(row.part_precision)}</TableCell>
+                      <TableCell>{formatScore(row.part_recall)}</TableCell>
+                      <TableCell>{formatScore(row.part_f1)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Box>
+          )}
+        </Stack>
+      </Paper>
+
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
+        <Stack spacing={2.0}>
+          <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
+            <SectionTitle
+              icon={<ManageSearchIcon color="primary" />}
+              title="Stratifier"
+              subtitle="Select a model and a biologically meaningful grouping rule to inspect branch-specific behaviour within subsets of the benchmark."
+            />
+            <BranchTabs value={stratBranch} onChange={setStratBranch} />
+          </Stack>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={5}>
+              <TextField
+                select
+                label="Model"
+                fullWidth
+                value={stratModel}
+                onChange={(event) => setStratModel(event.target.value)}
+              >
+                {(overview?.models || []).map((model) => (
+                  <MenuItem key={model.model_id} value={model.model_id}>{model.display_name}</MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <TextField
+                select
+                label="Rule"
+                fullWidth
+                value={stratRule}
+                onChange={(event) => setStratRule(event.target.value)}
+              >
+                {(overview?.available_stratifiers || []).map((rule) => (
+                  <MenuItem key={rule.value} value={rule.value}>{rule.label}</MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <TextField label="k" value={selectedK} fullWidth disabled />
+            </Grid>
+          </Grid>
+          {!stratifier?.rows?.length ? (
+            <Alert severity="info">No stratified rows are available for the current selection.</Alert>
+          ) : (
+            <Box className="result-table-wrap">
+              <Table className="metric-table">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Group</TableCell>
+                    <TableCell>Interval F1</TableCell>
+                    <TableCell>Interval MI</TableCell>
+                    <TableCell>Segmentation F1</TableCell>
+                    <TableCell>Segmentation MI</TableCell>
+                    <TableCell>Exact part F1</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {stratifier.rows.map((row) => (
+                    <TableRow key={row.group}>
+                      <TableCell>{row.group}</TableCell>
+                      <TableCell>{formatScore(row.interval_f1)}</TableCell>
+                      <TableCell>{formatScore(row.interval_mi, 0)}</TableCell>
+                      <TableCell>{formatScore(row.segmentation_f1)}</TableCell>
+                      <TableCell>{formatScore(row.segmentation_mi, 0)}</TableCell>
+                      <TableCell>{formatScore(row.part_f1)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Box>
+          )}
+        </Stack>
+      </Paper>
+
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
+        <Stack spacing={2.0}>
+          <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
+            <SectionTitle
+              icon={<BiotechIcon color="primary" />}
+              title="Detailed information"
+              subtitle="Ground-truth genes are listed first. Expanding a gene reveals its transcripts, and expanding a transcript reveals the matched predictions from the selected models."
+            />
+            <BranchTabs value={detailBranch} onChange={(next) => { setDetailBranch(next); setGenePage(1); setExpandedGene(false); }} />
+          </Stack>
+
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={8}>
+              <TextField
+                fullWidth
+                label="Search ground-truth genes, transcripts, chromosome, or type"
+                value={geneQuery}
+                onChange={(event) => { setGeneQuery(event.target.value); setGenePage(1); }}
+                InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} /> }}
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <TextField label="Active k" value={selectedK} fullWidth disabled />
+            </Grid>
+          </Grid>
+
+          {geneList.items?.length === 0 ? (
+            <Alert severity="info">No ground-truth genes match the current filter.</Alert>
+          ) : (
+            <Stack spacing={1.1}>
+              {geneList.items.map((gene) => {
+                const cacheKey = `${detailBranch}|${gene.gene_id}|${selectedK}|${selectedModels.join(",")}`;
+                const detail = geneDetails[cacheKey];
+                return (
+                  <Accordion
+                    key={`${detailBranch}-${gene.gene_id}`}
+                    expanded={expandedGene === gene.gene_id}
+                    onChange={(_, isExpanded) => {
+                      const next = isExpanded ? gene.gene_id : false;
+                      setExpandedGene(next);
+                      if (isExpanded) {
+                        fetchGeneDetail(gene.gene_id);
+                      }
+                    }}
+                  >
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <Stack spacing={0.6} sx={{ width: "100%" }}>
+                        <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={1.2}>
+                          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                            <Typography fontWeight={760}>{gene.gene_id}</Typography>
+                            {gene.transcript_types.map((item) => <Chip size="small" key={`${gene.gene_id}-${item}`} label={item} />)}
+                          </Stack>
+                          <Typography color="text.secondary">
+                            {gene.chromosome}:{gene.start}-{gene.end} ({gene.strand})
+                          </Typography>
+                        </Stack>
+                        <Typography variant="body2" color="text.secondary">
+                          {gene.transcript_count} transcript{gene.transcript_count === 1 ? "" : "s"}
+                        </Typography>
+                      </Stack>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      {!detail ? (
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <CircularProgress size={20} />
+                          <Typography color="text.secondary">Loading transcript-level details…</Typography>
+                        </Stack>
+                      ) : (
+                        <Stack spacing={1.1}>
+                          {detail.gene.transcripts.map((transcript) => (
+                            <Accordion key={transcript.transcript_id} className="nested-accordion">
+                              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                <Stack spacing={0.5} sx={{ width: "100%" }}>
+                                  <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={1.0}>
+                                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                                      <Typography fontWeight={760}>{transcript.transcript_id}</Typography>
+                                      <Chip size="small" label={transcript.transcript_type} />
+                                      <Chip size="small" variant="outlined" label={`${transcript.length} nt`} />
+                                      <Chip size="small" variant="outlined" label={`${transcript.matched_prediction_count} matched predictions`} />
+                                    </Stack>
+                                    <Typography color="text.secondary">
+                                      {transcript.chromosome}:{transcript.start}-{transcript.end} ({transcript.strand})
+                                    </Typography>
+                                  </Stack>
+                                </Stack>
+                              </AccordionSummary>
+                              <AccordionDetails>
+                                <Stack spacing={1.2}>
+                                  <Grid container spacing={2}>
+                                    <Grid item xs={12} lg={6}>
+                                      <Typography variant="subtitle2" sx={{ mb: 0.4 }}>Ground-truth exon segments</Typography>
+                                      <SegmentBox segments={transcript.exon_segments} />
+                                    </Grid>
+                                    <Grid item xs={12} lg={6}>
+                                      <Typography variant="subtitle2" sx={{ mb: 0.4 }}>Ground-truth CDS segments</Typography>
+                                      <SegmentBox segments={transcript.cds_segments} />
+                                    </Grid>
+                                  </Grid>
+                                  {!transcript.matched_predictions.length ? (
+                                    <Alert severity="info">No selected models match this transcript at the current branch.</Alert>
+                                  ) : (
+                                    <Box className="result-table-wrap">
+                                      <Table className="metric-table details-table">
+                                        <TableHead>
+                                          <TableRow>
+                                            <TableCell>Model</TableCell>
+                                            <TableCell>Prediction</TableCell>
+                                            <TableCell>Coordinate</TableCell>
+                                            <TableCell>Exon segments</TableCell>
+                                            <TableCell>CDS segments</TableCell>
+                                            <TableCell>Interval min k</TableCell>
+                                            <TableCell>Segmentation min k</TableCell>
+                                            <TableCell>Matched at current k</TableCell>
+                                          </TableRow>
+                                        </TableHead>
+                                        <TableBody>
+                                          {transcript.matched_predictions.map((match) => (
+                                            <TableRow key={`${transcript.transcript_id}-${match.model_id}-${match.pred_id}`}>
+                                              <TableCell>
+                                                <Stack direction="row" spacing={1} alignItems="center">
+                                                  <Typography>{match.model_name}</Typography>
+                                                  {match.temporary ? <Chip size="small" variant="outlined" label="temporary" /> : null}
+                                                </Stack>
+                                              </TableCell>
+                                              <TableCell>{match.pred_id}</TableCell>
+                                              <TableCell>
+                                                {match.chromosome ? `${match.chromosome}:${match.start}-${match.end} (${match.strand})` : "—"}
+                                              </TableCell>
+                                              <TableCell><SegmentBox segments={match.exon_segments} /></TableCell>
+                                              <TableCell><SegmentBox segments={match.cds_segments} /></TableCell>
+                                              <TableCell>{formatScore(match.interval_min_k, 0)}</TableCell>
+                                              <TableCell>{formatScore(match.segmentation_min_k, 0)}</TableCell>
+                                              <TableCell>
+                                                <Stack direction="row" spacing={0.8}>
+                                                  <MetricChip label="interval" value={match.interval_matched_at_k ? 1 : 0} temporary={false} />
+                                                  <MetricChip label="seg" value={match.segmentation_matched_at_k ? 1 : 0} temporary={false} />
+                                                </Stack>
+                                              </TableCell>
+                                            </TableRow>
+                                          ))}
+                                        </TableBody>
+                                      </Table>
+                                    </Box>
+                                  )}
+                                </Stack>
+                              </AccordionDetails>
+                            </Accordion>
+                          ))}
+                        </Stack>
+                      )}
+                    </AccordionDetails>
+                  </Accordion>
+                );
+              })}
+            </Stack>
+          )}
+
+          {geneList.total > geneList.page_size ? (
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2} alignItems={{ sm: "center" }} justifyContent="space-between">
+              <Typography color="text.secondary">
+                Showing {Math.min((geneList.page - 1) * geneList.page_size + 1, geneList.total)}–{Math.min(geneList.page * geneList.page_size, geneList.total)} of {geneList.total} genes
+              </Typography>
+              <Stack direction="row" spacing={1.0}>
+                <Button variant="outlined" disabled={geneList.page <= 1} onClick={() => setGenePage((current) => Math.max(1, current - 1))}>Previous</Button>
+                <Button variant="outlined" disabled={geneList.page * geneList.page_size >= geneList.total} onClick={() => setGenePage((current) => current + 1)}>Next</Button>
+              </Stack>
+            </Stack>
+          ) : null}
+        </Stack>
+      </Paper>
+    </Stack>
+  );
+}
