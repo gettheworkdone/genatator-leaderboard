@@ -6,17 +6,20 @@ import math
 import subprocess
 import threading
 import time
+import traceback
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from queue import Queue
 from typing import Any, Iterable, Optional
+from urllib.error import URLError
+from urllib.request import urlopen
 
 import pandas as pd
 
 from gene_level_final_final_fix import GeneLevelEvaluator
 
-from .gff_io import gff_text_to_dataframe
+from .gff_io import gff_text_to_dataframe, gff_text_to_dataframe_with_report
 
 
 SOURCE_REPOSITORY_URL = "https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git"
@@ -118,6 +121,8 @@ class LeaderboardService:
         self.external_dir = self.root_dir / "external"
         self.pred_repo_dir = self.external_dir / "genatator-ab-initio-leaderboard-predictions"
         self.ground_truth_path = self.data_dir / "ground_truth" / "chr20.gff"
+        self.sanitized_ground_truth_path = self.data_dir / "ground_truth" / "chr20.sanitized.gff"
+        self._effective_ground_truth_path = self.ground_truth_path
         self.predictions_dir = self.data_dir / "predictions"
         self.mapping_path = self.data_dir / "model_name_mapping.json"
         self._display_name_mapping: dict[str, Any] = {}
@@ -128,6 +133,7 @@ class LeaderboardService:
         self._permanent_models: dict[str, ModelBundle] = {}
         self._temporary_models: dict[str, ModelBundle] = {}
         self._ground_truth_indices: dict[str, dict[str, object]] = {}
+        self._ground_truth_input: Path | pd.DataFrame = self.ground_truth_path
         self._initializer_started = False
         self._upload_queue: Queue[dict[str, object]] = Queue()
         threading.Thread(target=self._upload_worker, daemon=True).start()
@@ -146,6 +152,7 @@ class LeaderboardService:
                 self._permanent_models = {}
                 self._temporary_models = {}
                 self._ground_truth_indices = {}
+                self._ground_truth_input = self.ground_truth_path
             self._initializer_started = True
             self._state = ServiceState(
                 running=True,
@@ -404,6 +411,7 @@ class LeaderboardService:
             )
 
             new_models: dict[str, ModelBundle] = {}
+            failed_models: list[str] = []
             for idx, pred_file in enumerate(files, start=1):
                 display_name = self._display_name_for_path(pred_file)
                 model_id = pred_file.stem
@@ -424,7 +432,6 @@ class LeaderboardService:
                     temporary=False,
                     source_file=pred_file.name,
                 )
-                self._set_state(completed_models=idx)
 
             with self._lock:
                 self._permanent_models = new_models
@@ -438,12 +445,13 @@ class LeaderboardService:
                 finished_at=time.time(),
             )
         except Exception as exc:  # pragma: no cover - defensive
+            trace_tail = traceback.format_exc(limit=5)
             self._set_state(
                 running=False,
                 ready=False,
                 stage="error",
-                error=str(exc),
-                message="Leaderboard initialization failed.",
+                error=f"{type(exc).__name__}: {exc}\n{trace_tail}",
+                message=f"Leaderboard initialization failed: {type(exc).__name__}: {exc}",
                 current_model=None,
                 finished_at=time.time(),
             )
@@ -455,7 +463,7 @@ class LeaderboardService:
                 with self._lock:
                     self._state.upload_current = str(job["model_name"])
                     self._state.upload_queue_length = self._upload_queue.qsize()
-                if not self.ground_truth_path.exists():
+                if self._ground_truth_df is None and not self.ground_truth_path.exists():
                     continue
                 pred_df = gff_text_to_dataframe(str(job["pred_gff_text"]))
                 model_id = f"tmp-{_slugify(str(job['model_name']))}-{job['job_id'][:8]}"
@@ -491,7 +499,7 @@ class LeaderboardService:
     ) -> ModelBundle:
         exon_result = self.evaluator.evaluate_gff_exon(
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_input,
             k_values=DEFAULT_K_VALUES,
             use_strand=USE_STRAND,
             gene_biotypes=EXON_GENE_BIOTYPES,
@@ -499,7 +507,7 @@ class LeaderboardService:
         )
         cds_result = self.evaluator.evaluate_gff_cds(
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_input,
             k_values=DEFAULT_K_VALUES,
             use_strand=USE_STRAND,
             gene_biotypes=CDS_GENE_BIOTYPES,
@@ -511,7 +519,7 @@ class LeaderboardService:
         exon_stratifier = self.evaluator.build_stratifier(
             branch_result=exon_result,
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_input,
             use_strand=USE_STRAND,
             gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
@@ -519,7 +527,7 @@ class LeaderboardService:
         cds_stratifier = self.evaluator.build_stratifier(
             branch_result=cds_result,
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_input,
             use_strand=USE_STRAND,
             gene_biotypes=CDS_GENE_BIOTYPES,
             transcript_types=CDS_TRANSCRIPT_TYPES,
@@ -528,7 +536,7 @@ class LeaderboardService:
         exon_detailed = self.evaluator.build_detailed_info(
             branch_result=exon_result,
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_input,
             use_strand=USE_STRAND,
             gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
@@ -536,7 +544,7 @@ class LeaderboardService:
         cds_detailed = self.evaluator.build_detailed_info(
             branch_result=cds_result,
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_input,
             use_strand=USE_STRAND,
             gene_biotypes=CDS_GENE_BIOTYPES,
             transcript_types=CDS_TRANSCRIPT_TYPES,
@@ -573,7 +581,7 @@ class LeaderboardService:
         gene_biotypes: Iterable[str],
         transcript_types: Iterable[str],
     ) -> dict[str, object]:
-        gt_df = self.evaluator._read_gff(self.ground_truth_path)
+        gt_df = self.evaluator._read_gff(self._ground_truth_input)
         normalized_gene_biotypes = self.evaluator._normalize_string_filter(gene_biotypes)
         normalized_transcript_types = self.evaluator._normalize_string_filter(transcript_types)
         true_rows = self.evaluator._extract_true_transcript_rows(
@@ -645,7 +653,7 @@ class LeaderboardService:
     def _build_prediction_index(self, pred_gff: Path | pd.DataFrame) -> dict[str, dict[str, object]]:
         common = self.evaluator._prepare_common_data(
             pred_gff=pred_gff,
-            true_gff=self.ground_truth_path,
+            true_gff=self._ground_truth_input,
             k_values=[0],
             gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
