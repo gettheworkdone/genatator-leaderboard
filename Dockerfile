@@ -2,7 +2,6 @@ FROM node:20-alpine AS frontend-build
 WORKDIR /app/frontend
 
 COPY frontend/package.json ./
-COPY frontend/package-lock.json ./
 RUN npm install
 
 COPY frontend/ ./
@@ -12,11 +11,15 @@ FROM python:3.11-slim
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    CONDA_DIR=/opt/conda \
+    PATH=/opt/conda/bin:$PATH
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
     curl \
+    git \
+    bzip2 \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
