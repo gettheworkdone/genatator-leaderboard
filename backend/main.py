@@ -45,7 +45,7 @@ ASSETS_DIR = STATIC_DIR / "assets"
 EVALUATOR = GeneLevelEvaluator()
 LEADERBOARD = LeaderboardService(ROOT_DIR)
 
-app = FastAPI(title="GENATATOR Gene-level Leaderboard", docs_url=None, redoc_url=None)
+app = FastAPI(title="Ab Initio Leaderboard and Metric", docs_url=None, redoc_url=None)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
