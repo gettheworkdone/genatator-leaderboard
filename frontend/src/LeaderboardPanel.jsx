@@ -753,7 +753,7 @@ export default function LeaderboardPanel() {
             />
             <BranchTabs value={stratBranch} onChange={setStratBranch} />
           </Stack>
-          <Grid container spacing={2}>
+          <Grid container spacing={2} alignItems="flex-end">
             <Grid item xs={12} md={5}>
               <TextField
                 select
@@ -827,7 +827,7 @@ export default function LeaderboardPanel() {
             <BranchTabs value={detailBranch} onChange={(next) => { setDetailBranch(next); setGenePage(1); setExpandedGene(false); }} />
           </Stack>
 
-          <Grid container spacing={2}>
+          <Grid container spacing={2} alignItems="flex-end">
             <Grid item xs={12} md={8}>
               <TextField
                 fullWidth

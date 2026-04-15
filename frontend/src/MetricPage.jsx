@@ -18,17 +18,20 @@ This metric supports a Python API through Hugging Face Evaluate.
 
 1) Clone this Space repository locally.
 2) Install dependencies: pip install evaluate datasets
-3) Load the local metric script and compute metric values.
+3) Load the local metric script and run metric, stratifier, and detailed outputs.
 
 import evaluate
-from pathlib import Path
-import requests
+from gene_level_final_final_fix import GeneLevelEvaluator
 
 metric = evaluate.load("./backend/evaluate_gene_level_metric.py")
+evaluator = GeneLevelEvaluator()
 
-pred_gff_text = Path("predictions.gff").read_text(encoding="utf-8")
-true_gff_text = Path("reference.gff").read_text(encoding="utf-8")
+pred_gff = "./dummy/predictions.gff"
+true_gff = "./dummy/reference.gff"
+pred_gff_text = open(pred_gff).read()
+true_gff_text = open(true_gff).read()
 
+"""Compute both branches with the local Evaluate metric wrapper."""
 result = metric.compute(
     pred_gff=pred_gff_text,
     true_gff=true_gff_text,
@@ -38,23 +41,37 @@ result = metric.compute(
 print(result["exon"][250]["interval-level"]["f1"])
 print(result["cds"][250]["segmentation-level"]["f1"])
 
-base_url = "http://localhost:7860"
-overview = requests.get(f"{base_url}/api/leaderboard/overview", timeout=30).json()
-model_id = overview["models"][0]["model_id"]
+"""Run exon evaluation directly through GeneLevelEvaluator."""
+exon_result = evaluator.evaluate_gff_exon(
+    pred_gff=pred_gff,
+    true_gff=true_gff,
+    k_values=range(0, 501),
+    use_strand=True,
+    gene_biotypes=["protein_coding", "lncRNA"],
+    transcript_types=["mRNA", "lnc_RNA"],
+)
 
-stratifier = requests.get(
-    f"{base_url}/api/leaderboard/stratifier",
-    params={"model_id": model_id, "branch": "exon", "rule": "transcript_type", "k": 250},
-    timeout=30,
-).json()
-print(stratifier["rows"][:3])
+"""Build stratifier table from the computed exon branch result."""
+stratifier_output = evaluator.build_stratifier(
+    branch_result=exon_result,
+    pred_gff=pred_gff,
+    true_gff=true_gff,
+    use_strand=True,
+    gene_biotypes=["protein_coding", "lncRNA"],
+    transcript_types=["mRNA", "lnc_RNA"],
+)
+print(stratifier_output["strand"]["+"][250])
 
-detail = requests.get(
-    f"{base_url}/api/leaderboard/gene/gene-LOC124908093",
-    params={"branch": "exon", "k": 250, "model_ids": model_id},
-    timeout=30,
-).json()
-print(detail["gene"]["gene_id"], len(detail["gene"]["transcripts"]))`;
+"""Build transcript-level evidence for detailed inspection."""
+detailed_info_output = evaluator.build_detailed_info(
+    branch_result=exon_result,
+    pred_gff=pred_gff,
+    true_gff=true_gff,
+    use_strand=True,
+    gene_biotypes=["protein_coding", "lncRNA"],
+    transcript_types=["mRNA", "lnc_RNA"],
+)
+print(len(detailed_info_output), list(detailed_info_output.keys())[:3])`;
 
 function SectionTitle({ icon = null, title, subtitle = null }) {
   return (
@@ -280,7 +297,7 @@ export default function MetricPage() {
         </Stack>
       </Paper>
 
-      <Grid container spacing={2}>
+      <Grid container spacing={2} justifyContent="center" alignItems="stretch">
         <Grid item xs={12} md={4}>
           <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, height: "100%" }}>
             <Stack spacing={2.0}>
@@ -321,7 +338,7 @@ export default function MetricPage() {
 
           {error ? <Alert severity="error">{error}</Alert> : null}
 
-          <Grid container spacing={2}>
+          <Grid container spacing={2} justifyContent="center" alignItems="flex-end">
             <Grid item xs={12} md={5}>
               <Typography variant="subtitle2" sx={{ mb: 0.8 }}>
                 Prediction GFF
