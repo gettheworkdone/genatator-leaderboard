@@ -14,14 +14,15 @@ import CalculateIcon from "@mui/icons-material/Calculate";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 const EVALUATE_SNIPPET = `How to use this metric with Evaluate
-This metric supports a Python API through Hugging Face Evaluate (GFF mode).
+This metric supports a Python API through Hugging Face Evaluate.
 
 1) Clone this Space repository locally.
 2) Install dependencies: pip install evaluate datasets
-3) Load the local metric script and compute.
+3) Load the local metric script and compute metric values.
 
 import evaluate
 from pathlib import Path
+import requests
 
 metric = evaluate.load("./backend/evaluate_gene_level_metric.py")
 
@@ -37,9 +38,23 @@ result = metric.compute(
 print(result["exon"][250]["interval-level"]["f1"])
 print(result["cds"][250]["segmentation-level"]["f1"])
 
-Notes:
-- this API is GFF-only (no Python-array mode)
-- output structure matches the Space playground branch outputs`;
+base_url = "http://localhost:7860"
+overview = requests.get(f"{base_url}/api/leaderboard/overview", timeout=30).json()
+model_id = overview["models"][0]["model_id"]
+
+stratifier = requests.get(
+    f"{base_url}/api/leaderboard/stratifier",
+    params={"model_id": model_id, "branch": "exon", "rule": "transcript_type", "k": 250},
+    timeout=30,
+).json()
+print(stratifier["rows"][:3])
+
+detail = requests.get(
+    f"{base_url}/api/leaderboard/gene/gene-LOC124908093",
+    params={"branch": "exon", "k": 250, "model_ids": model_id},
+    timeout=30,
+).json()
+print(detail["gene"]["gene_id"], len(detail["gene"]["transcripts"]))`;
 
 function SectionTitle({ icon = null, title, subtitle = null }) {
   return (
@@ -152,10 +167,7 @@ export default function MetricPage() {
     <Stack spacing={3.2}>
       <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 } }}>
         <Stack spacing={2.2}>
-          <SectionTitle
-            title="Metric description"
-            subtitle="Paper-style rationale for biologically faithful evaluation of ab initio annotation."
-          />
+          <SectionTitle title="Metric description" subtitle="Paper-style rationale for biologically faithful evaluation of ab initio annotation." />
 
           <Box sx={{ position: "relative" }}>
             <Box
@@ -268,13 +280,14 @@ export default function MetricPage() {
         </Stack>
       </Paper>
 
-      <Box className="top-two-column-grid">
-        <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
-          <Stack spacing={2.0}>
-            <SectionTitle
-              title="Accepted input"
-              subtitle="The playground works with GFF/GFF3-style annotations and evaluates both branches across k = 0..500."
-            />
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={4}>
+          <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, height: "100%" }}>
+            <Stack spacing={2.0}>
+              <SectionTitle
+                title="Accepted input"
+                subtitle="The playground works with GFF/GFF3-style annotations and evaluates both branches across k = 0..500."
+              />
             <Typography color="text.secondary">
               Provide a prediction GFF and a ground-truth GFF. The evaluator parses transcript, exon, and CDS features directly
               from these files and computes the full set of branch-specific metrics for <span className="mono">k = 0…500</span>.
@@ -286,27 +299,25 @@ export default function MetricPage() {
               branch. The exon branch evaluates <span className="mono">mRNA</span> and <span className="mono">lnc_RNA</span> transcripts.
               The CDS branch evaluates <span className="mono">mRNA</span> transcripts with annotated coding sequence.
             </Typography>
-          </Stack>
-        </Paper>
-
-        <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
-          <Stack spacing={2.0}>
-            <SectionTitle
-              title="How to use this metric with Evaluate"
-              subtitle="Use the local Evaluate metric script for Python API access (GFF mode)."
-            />
-            <CodePanel>{EVALUATE_SNIPPET}</CodePanel>
-          </Stack>
-        </Paper>
-      </Box>
+            </Stack>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} md={8}>
+          <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, height: "100%" }}>
+            <Stack spacing={2.0}>
+              <SectionTitle
+                title="How to use this metric with Evaluate"
+                subtitle="Python examples for metric compute, stratifier, and detailed information."
+              />
+              <CodePanel>{EVALUATE_SNIPPET}</CodePanel>
+            </Stack>
+          </Paper>
+        </Grid>
+      </Grid>
 
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
         <Stack spacing={2.2}>
-          <SectionTitle
-            icon={<CalculateIcon color="primary" />}
-            title="Playground"
-            subtitle="Upload a prediction GFF and a ground-truth GFF to compute both exon and CDS branches."
-          />
+          <SectionTitle title="Playground" subtitle="Upload a prediction GFF and a ground-truth GFF to compute both exon and CDS branches." />
 
           {error ? <Alert severity="error">{error}</Alert> : null}
 

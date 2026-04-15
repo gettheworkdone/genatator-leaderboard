@@ -27,13 +27,7 @@ import {
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import InsightsIcon from "@mui/icons-material/Insights";
-import FunctionsIcon from "@mui/icons-material/Functions";
-import DatasetLinkedIcon from "@mui/icons-material/DatasetLinked";
-import ManageSearchIcon from "@mui/icons-material/ManageSearch";
 import SearchIcon from "@mui/icons-material/Search";
-import LeaderboardIcon from "@mui/icons-material/Leaderboard";
-import BiotechIcon from "@mui/icons-material/Biotech";
 import {
   CartesianGrid,
   Legend,
@@ -399,7 +393,6 @@ export default function LeaderboardPanel() {
       <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 } }}>
         <Stack spacing={2.0}>
           <SectionTitle
-            icon={<LeaderboardIcon color="primary" />}
             title="Leaderboard description"
             subtitle="Scientifically interpretable comparison of ab initio annotation models."
           />
@@ -490,7 +483,6 @@ export default function LeaderboardPanel() {
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
           <Stack spacing={1.8}>
             <SectionTitle
-              icon={<UploadFileIcon color="primary" />}
               title="Temporary custom submission"
               subtitle="Upload a prediction GFF and a model name to embed a temporary result across all leaderboard panels."
             />
@@ -535,7 +527,6 @@ export default function LeaderboardPanel() {
             alignItems={{ xs: "stretch", lg: "center" }}
           >
             <SectionTitle
-              icon={<FunctionsIcon color="primary" />}
               title="Main metrics"
               subtitle="The table is evaluated at a user-selected tolerance k and shows both exon and CDS branches simultaneously."
             />
@@ -625,7 +616,6 @@ export default function LeaderboardPanel() {
         <Stack spacing={2.0}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
-              icon={<InsightsIcon color="primary" />}
               title="Metric curves"
               subtitle="Choose the branch, metric, and models to inspect smooth trajectories over k = 0…500. Click the chart to set the active operating point."
             />
@@ -694,7 +684,6 @@ export default function LeaderboardPanel() {
         <Stack spacing={2.0}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
-              icon={<DatasetLinkedIcon color="primary" />}
               title="Full metrics"
               subtitle="Complete metric table at the active k for the models selected in the graph panel."
             />
@@ -759,7 +748,6 @@ export default function LeaderboardPanel() {
         <Stack spacing={2.0}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
-              icon={<ManageSearchIcon color="primary" />}
               title="Stratifier"
               subtitle="Select a model and a biologically meaningful grouping rule to inspect branch-specific behaviour within subsets of the benchmark."
             />
@@ -833,7 +821,6 @@ export default function LeaderboardPanel() {
         <Stack spacing={2.0}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
-              icon={<BiotechIcon color="primary" />}
               title="Detailed information"
               subtitle="Ground-truth genes are listed first. Expanding a gene reveals its transcripts, and expanding a transcript reveals the matched predictions from the selected models."
             />

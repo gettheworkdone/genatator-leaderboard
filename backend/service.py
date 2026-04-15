@@ -423,6 +423,7 @@ class LeaderboardService:
                     continue
                 self._set_state(
                     current_model=display_name,
+                    completed_models=max(idx - 1, 0),
                     message=f"Computing leaderboard metrics for {display_name} ({idx}/{len(files)}).",
                 )
                 new_models[model_id] = self._compute_model_bundle(

@@ -22,10 +22,7 @@ export default function App() {
     <Box>
       <AppBar position="sticky">
         <Toolbar sx={{ display: "flex", justifyContent: "space-between" }}>
-          <Stack direction="row" spacing={1.2} alignItems="center">
-            <BiotechIcon color="primary" />
-            <Typography variant="h6">Ab Initio Leaderboard and Metric</Typography>
-          </Stack>
+          <Typography variant="h6">Ab Initio Leaderboard and Metric</Typography>
         </Toolbar>
       </AppBar>
 
