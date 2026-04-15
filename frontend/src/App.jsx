@@ -9,9 +9,6 @@ import {
   Typography,
 } from "@mui/material";
 
-import BiotechIcon from "@mui/icons-material/Biotech";
-import LeaderboardIcon from "@mui/icons-material/Leaderboard";
-
 import MetricPage from "./MetricPage";
 import LeaderboardPanel from "./LeaderboardPanel";
 
@@ -22,13 +19,7 @@ export default function App() {
     <Box>
       <AppBar position="sticky">
         <Toolbar sx={{ display: "flex", justifyContent: "space-between" }}>
-          <Stack direction="row" spacing={1.2} alignItems="center">
-            <BiotechIcon color="primary" />
-            <Typography variant="h6">GENATATOR Gene-level Metric & Leaderboard</Typography>
-          </Stack>
-          <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", md: "block" } }}>
-            Biologically rigorous assessment of ab initio genome annotation models
-          </Typography>
+          <Typography variant="h6">Ab Initio Annotation Leaderboard and Metric</Typography>
         </Toolbar>
       </AppBar>
 
@@ -39,7 +30,6 @@ export default function App() {
               variant={pageMode === "metric" ? "contained" : "outlined"}
               size="large"
               onClick={() => setPageMode("metric")}
-              startIcon={<BiotechIcon />}
             >
               Metric description
             </Button>
@@ -47,9 +37,8 @@ export default function App() {
               variant={pageMode === "leaderboard" ? "contained" : "outlined"}
               size="large"
               onClick={() => setPageMode("leaderboard")}
-              startIcon={<LeaderboardIcon />}
             >
-              API + leaderboard
+              Leaderboard
             </Button>
           </Stack>
 
