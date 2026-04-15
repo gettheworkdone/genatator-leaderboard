@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from queue import Queue
 from typing import Any, Iterable, Optional
+from urllib.error import URLError
+from urllib.request import urlopen
 
 import pandas as pd
 
@@ -119,6 +121,8 @@ class LeaderboardService:
         self.external_dir = self.root_dir / "external"
         self.pred_repo_dir = self.external_dir / "genatator-ab-initio-leaderboard-predictions"
         self.ground_truth_path = self.data_dir / "ground_truth" / "chr20.gff"
+        self.sanitized_ground_truth_path = self.data_dir / "ground_truth" / "chr20.sanitized.gff"
+        self._effective_ground_truth_path = self.ground_truth_path
         self.predictions_dir = self.data_dir / "predictions"
         self.mapping_path = self.data_dir / "model_name_mapping.json"
         self._display_name_mapping: dict[str, Any] = {}
@@ -492,7 +496,7 @@ class LeaderboardService:
                 with self._lock:
                     self._state.upload_current = str(job["model_name"])
                     self._state.upload_queue_length = self._upload_queue.qsize()
-                if not self.ground_truth_path.exists():
+                if self._ground_truth_df is None and not self.ground_truth_path.exists():
                     continue
                 pred_df = gff_text_to_dataframe(str(job["pred_gff_text"]))
                 model_id = f"tmp-{_slugify(str(job['model_name']))}-{job['job_id'][:8]}"
