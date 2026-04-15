@@ -403,17 +403,45 @@ export default function LeaderboardPanel() {
             subtitle="Scientifically interpretable comparison of ab initio annotation models."
           />
           <Typography color="text.secondary">
-            The leaderboard is not a popularity table. It reports interval-level and segmentation-level F1 and MI for both exon
-            and CDS branches, so each model is evaluated across transcript recovery, isoform recovery, internal structure fidelity,
-            and coding-structure preservation.
+            The leaderboard is designed not as a popularity table, but as a <strong>scientifically interpretable comparison framework</strong>.
+            Its main panel reports eight primary summary scores: interval-level F1, interval-level MI, segmentation-level F1, and
+            segmentation-level MI for the exon branch, and the same four metrics for the CDS branch. Together, these scores distinguish
+            four different aspects of performance: broad transcript recovery, recovery of isoform diversity, biologically correct internal
+            reconstruction, and coding-structure fidelity. This prevents a model from appearing strong on the basis of a single favorable
+            metric while failing in another biologically essential dimension.
           </Typography>
           <Typography color="text.secondary">
-            Instead of a single operating point, the interface shows each metric as a function of tolerance <span className="mono">k</span>.
-            This reveals whether performance is robust near exact matching or only under lenient boundary slack.
+            The leaderboard does not rely on a single operating point alone. Instead, it visualizes each selected metric as a{" "}
+            <strong>continuous function of the tolerance parameter (k)</strong>. This presentation is scientifically important, because
+            it exposes how rapidly model quality changes as one moves from exact matching toward more permissive matching. A model whose
+            curve rises only under large tolerances is fundamentally different from a model that performs well near exact matching, even
+            if both happen to share a similar score at one chosen value of (k). The curve view therefore captures robustness, boundary
+            precision, and error sensitivity in a way that a single scalar cannot.
           </Typography>
           <Typography color="text.secondary">
-            Once an Active k is selected, the full-metrics, stratified, and transcript-resolved panels expose where scores come
-            from and which biological structures each model can and cannot recover.
+            Once a specific tolerance is selected, the leaderboard expands into a <strong>full metrics view</strong>, where the aggregate
+            scores are decomposed into their biological components: matched and unmatched predictions, recovered and missed genes, part-level
+            exact scores, and multi-isoform counts. This makes the comparison transparent. Users can see whether a model achieves a favorable
+            F1 by high precision, by high recall, or by a particular balance between the two. They can also determine whether performance
+            differences arise from transcript localization, from segmentation fidelity, or from isoform recovery. In this sense, the leaderboard
+            is intended not merely to rank models, but to explain ranking.
+          </Typography>
+          <Typography color="text.secondary">
+            The stratified and transcript-resolved sections extend this philosophy further. A model may rank well overall while failing
+            systematically on lncRNAs, on one strand, or on particular chromosomes. Likewise, an aggregate metric may hide whether errors
+            are concentrated in a small subset of difficult genes or are distributed broadly across the annotation. By placing gene- and
+            transcript-level evidence directly under the global comparison, the leaderboard preserves scientific traceability from summary
+            score to underlying annotation event. This is especially important for genome annotation, where the central question is not only
+            which model scores highest, but <strong>what kinds of biological structures each model can and cannot recover</strong>.
+          </Typography>
+          <Typography color="text.secondary">
+            In summary, the metric and leaderboard are built around a single principle: <strong>biological validity should take precedence
+            over superficial agreement</strong>. The exon branch evaluates transcript reconstruction across coding and non-coding genes.
+            The CDS branch focuses on preservation of coding structure. Interval-level scores measure localization, segmentation-level
+            scores measure structural correctness, MI measures isoform recovery, part-level metrics diagnose local element detection, and
+            stratified plus transcript-resolved views expose where and why models succeed or fail. Taken together, this framework provides
+            a more faithful assessment of ab initio annotation quality than conventional per-base evaluation and is intended to serve as a
+            rigorous benchmark for the next generation of genome annotation models.
           </Typography>
           {showProgress ? (
             <Stack spacing={1.1}>

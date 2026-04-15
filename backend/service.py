@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import shutil
 import threading
 import time
@@ -53,6 +54,18 @@ def _slugify(text: str) -> str:
     cleaned = "".join(ch.lower() if ch.isalnum() else "-" for ch in text.strip())
     cleaned = "-".join(part for part in cleaned.split("-") if part)
     return cleaned or "model"
+
+
+def _safe_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    return int(numeric)
 
 
 @dataclass
@@ -287,12 +300,14 @@ class LeaderboardService:
                 if detail_entry is None:
                     continue
                 interval_map = {
-                    item["pred_id"]: int(item["min_k"])
+                    item["pred_id"]: safe_value
                     for item in detail_entry["interval-level"].get("predictions", [])
+                    if (safe_value := _safe_int(item.get("min_k"))) is not None
                 }
                 segmentation_map = {
-                    item["pred_id"]: int(item["min_k"])
+                    item["pred_id"]: safe_value
                     for item in detail_entry["segmentation-level"].get("predictions", [])
+                    if (safe_value := _safe_int(item.get("min_k"))) is not None
                 }
                 for pred_id in sorted(set(interval_map) | set(segmentation_map)):
                     pred_meta = bundle.prediction_index.get(pred_id, {})
