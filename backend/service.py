@@ -21,7 +21,7 @@ from gene_level_final_final_fix import GeneLevelEvaluator
 from .gff_io import gff_text_to_dataframe
 
 
-SOURCE_REPOSITORY_URL = "https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions"
+SOURCE_REPOSITORY_URL = "https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git"
 SOURCE_REPOSITORY_RAW_BASE = (
     "https://raw.githubusercontent.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions/main"
 )
@@ -407,6 +407,7 @@ class LeaderboardService:
             for idx, pred_file in enumerate(files, start=1):
                 display_name = self._display_name_for_path(pred_file)
                 model_id = pred_file.stem
+                pred_df = gff_text_to_dataframe(pred_file.read_text(encoding="utf-8"))
                 self._set_state(
                     current_model=display_name,
                     message=f"Computing leaderboard metrics for {display_name} ({idx}/{len(files)}).",
@@ -414,7 +415,7 @@ class LeaderboardService:
                 new_models[model_id] = self._compute_model_bundle(
                     model_id=model_id,
                     display_name=display_name,
-                    pred_gff=pred_file,
+                    pred_gff=pred_df,
                     temporary=False,
                     source_file=pred_file.name,
                 )

@@ -14,62 +14,22 @@ import CalculateIcon from "@mui/icons-material/Calculate";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 const EVALUATE_SNIPPET = `How to use this metric with Evaluate
-Load the version you need (python or .gff mode) and run evaluation.
+This Space metric is GFF-only.
+It does not provide Python-array mode.
 
-Python-like mode
-import evaluate
+Recommended workflow:
+1) Prepare two files:
+   - prediction annotation (.gff/.gff3/.gtf)
+   - reference annotation (.gff/.gff3/.gtf)
+2) Open the Playground section in this Space.
+3) Upload both files and choose Active k.
+4) Click "Run metric".
+5) Read exon/CDS interval-level, segmentation-level, and part-level summaries.
 
-metric = evaluate.load("shmelev/gene-level-metric", revision="metric-only")
-
-result = metric.compute_gene_level_python(
-    preds=[
-        [
-            [0, 0],
-            [1, 0],
-            [1, 1],
-            [0, 0],
-            [1, 1],
-            [1, 1],
-            [0, 0],
-            [0, 0],
-        ]
-    ],
-    targets=[
-        [
-            [0, 0],
-            [1, 0],
-            [1, 1],
-            [0, 0],
-            [1, 1],
-            [1, 1],
-            [0, 0],
-            [0, 0],
-        ]
-    ],
-    mapping=[
-        "TX0001|GENE0001|mRNA|+|GRCh38|chr1|1:8",
-    ],
-    stratifier="type",
-    types=["mRNA", "lnc_RNA"],
-    segments=["exon", "CDS"],
-)
-
-print(result)
-
-GFF mode
-import evaluate
-
-metric = evaluate.load("shmelev/gene-level-metric", revision="metric-only")
-
-result = metric.compute_gene_level_gff(
-    pred_gff="<predictions.gff>",
-    true_gff="<reference.gff>",
-    stratifier="type",
-    types=["mRNA", "lnc_RNA"],
-    segments=["exon", "CDS"],
-)
-
-print(result)`;
+If you need reproducible comparison with permanent models:
+- use the Leaderboard section
+- keep the same ground-truth file
+- compare curves over k = 0..500`;
 
 function SectionTitle({ icon = null, title, subtitle = null }) {
   return (
@@ -119,6 +79,7 @@ export default function MetricPage() {
   const [trueFile, setTrueFile] = useState(null);
   const [selectedKInput, setSelectedKInput] = useState("250");
   const [loading, setLoading] = useState(false);
+  const [metricExpanded, setMetricExpanded] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
   const predInputRef = useRef(null);
@@ -186,8 +147,16 @@ export default function MetricPage() {
             subtitle="Paper-style rationale for biologically faithful evaluation of ab initio annotation."
           />
 
-          <Typography color="text.secondary">
-            The purpose of this benchmark is to provide a biologically rigorous evaluation of <strong>ab initio genome annotation</strong>{" "}
+          <Box sx={{ position: "relative" }}>
+            <Box
+              sx={{
+                maxHeight: metricExpanded ? "none" : 360,
+                overflow: "hidden",
+                pr: 0.5,
+              }}
+            >
+              <Typography color="text.secondary">
+                The purpose of this benchmark is to provide a biologically rigorous evaluation of <strong>ab initio genome annotation</strong>{" "}
             from ordinary GFF predictions against curated reference annotation. Its central premise is that the quality of an annotation
             model should not be judged primarily by per-nucleotide agreement, because local label accuracy can remain deceptively high
             even when the predicted transcript or coding structure is biologically wrong. A one-base shift at an exon or CDS boundary
@@ -195,8 +164,8 @@ export default function MetricPage() {
             effect on basewise scores. For this reason, the metric is organized around transcript reconstruction and gene recovery rather
             than around isolated nucleotide labels. This design follows the broader argument that interval- and gene-level evaluation is
             more appropriate than token-level scoring for biologically meaningful assessment of gene annotation systems.
-          </Typography>
-          <Typography color="text.secondary">
+              </Typography>
+              <Typography color="text.secondary">
             The benchmark is evaluated in two complementary branches, <strong>exon</strong> and <strong>CDS</strong>, because these reflect
             distinct biological questions. The exon branch measures recovery of transcript architecture in its broad sense, including
             protein-coding transcripts and long non-coding RNAs. It is therefore suitable for judging whether a model reconstructs the
@@ -206,8 +175,8 @@ export default function MetricPage() {
             untranslated and non-coding components of the annotation. Conversely, a model that is strong on full transcript structure may
             still differ from coding-focused systems in the strict reconstruction of CDS organization. The two-branch design therefore makes
             the leaderboard scientifically fairer and more interpretable.
-          </Typography>
-          <Typography color="text.secondary">
+              </Typography>
+              <Typography color="text.secondary">
             All scores are computed as a function of a <strong>boundary tolerance parameter</strong> (k), which expresses how far a predicted
             transcript or coding interval may deviate from the reference and still be considered localized correctly. This is not merely a
             practical relaxation. In biology, transcript starts and ends are not perfectly noise-free objects, and even high-quality reference
@@ -216,8 +185,8 @@ export default function MetricPage() {
             models that are approximately correct from those that are precisely correct, and it makes visible whether an apparent gain in
             performance comes from genuine structural accuracy or only from lenient localization. The use of tolerance-dependent curves is
             also consistent with prior biologically motivated benchmarking of transcript boundary recovery.
-          </Typography>
-          <Typography color="text.secondary">
+              </Typography>
+              <Typography color="text.secondary">
             The first primary metric family is <strong>interval-level evaluation</strong>, which measures transcript localization without yet
             requiring full internal structure to be correct. In this view, a predicted transcript is rewarded when it is matched to a reference
             transcript within the chosen tolerance (k). Precision is calculated over predicted transcripts, because every additional prediction
@@ -227,8 +196,8 @@ export default function MetricPage() {
             branch, the match reflects transcript interval agreement. In the CDS branch, the rule is deliberately more conservative: a predicted
             coding interval is credited only when it recovers the true coding core without truncating it, because cutting into CDS is far more
             damaging biologically than a modest flanking overextension. This makes the CDS branch especially appropriate for judging coding integrity.
-          </Typography>
-          <Typography color="text.secondary">
+              </Typography>
+              <Typography color="text.secondary">
             The second primary metric is <strong>MI, multi-isoform recovery</strong>. MI addresses a failure mode that ordinary precision, recall,
             and F1 do not detect well: a model may recover one plausible transcript per locus and still completely miss isoform diversity. From
             a biological standpoint, this is a major limitation, because alternative isoforms are often functionally distinct and are part of the
@@ -236,8 +205,8 @@ export default function MetricPage() {
             isoform. Importantly, this score is evaluated only on genes for which the annotation genuinely supports multi-isoform structure, so
             the metric does not penalize methods for failing to invent complexity where none exists. In this way, MI complements F1: F1 measures
             general recovery, whereas MI measures whether the method captures transcript heterogeneity.
-          </Typography>
-          <Typography color="text.secondary">
+              </Typography>
+              <Typography color="text.secondary">
             Interval-level agreement alone is still insufficient, because a transcript can be localized approximately correctly while its internal
             exon or coding organization is wrong. For this reason, the benchmark introduces <strong>segmentation-level evaluation</strong>, which
             asks whether matched predictions also reconstruct the biologically relevant internal structure. In the exon branch, segmentation-level
@@ -249,8 +218,8 @@ export default function MetricPage() {
             determine the reading frame and thus the encoded protein. A predictor that finds the right gene but shifts a coding segment has not truly
             recovered the same biological product. Segmentation-level F1 and segmentation-level MI therefore represent the most demanding and
             biologically faithful summary of annotation quality in this benchmark.
-          </Typography>
-          <Typography color="text.secondary">
+              </Typography>
+              <Typography color="text.secondary">
             Alongside these primary transcript-centered measures, the benchmark also reports <strong>part-level metrics</strong> for exons or CDS
             segments themselves. These scores quantify exact precision, recall, and F1 over unique exonic parts in the exon branch and unique CDS
             parts in the CDS branch. Their role is diagnostic rather than primary. They answer a different question: does the model identify the
@@ -258,8 +227,8 @@ export default function MetricPage() {
             a method may detect many individual exons or CDS segments correctly while still failing to reconstruct full isoforms. By reporting part-level
             metrics separately, the benchmark helps distinguish failures of local part detection from failures of transcript assembly. This makes the
             leaderboard more informative for model development and error analysis.
-          </Typography>
-          <Typography color="text.secondary">
+              </Typography>
+              <Typography color="text.secondary">
             A further strength of the metric is that it is not limited to a single global average. The same evaluation can be <strong>stratified by
             strand, chromosome, and transcript type</strong>, allowing users to inspect whether a model behaves differently on the forward versus reverse
             strand, on different genomic contexts, or on mRNA versus lncRNA transcripts. Such stratification is biologically important because different
@@ -267,7 +236,25 @@ export default function MetricPage() {
             evidence layer</strong>. For every ground-truth transcript, the interface records which predictions support it, the minimal tolerance at which
             the support appears, and whether the parent gene contributes to multi-isoform recovery. This transcript-centered perspective makes the benchmark
             auditable: users can move from leaderboard scores to the exact reference transcripts that were recovered, missed, or only partially supported.
-          </Typography>
+              </Typography>
+            </Box>
+            {!metricExpanded ? (
+              <Box
+                sx={{
+                  position: "absolute",
+                  bottom: 44,
+                  left: 0,
+                  right: 0,
+                  height: 64,
+                  background: "linear-gradient(to bottom, rgba(248,251,250,0), rgba(248,251,250,1))",
+                  pointerEvents: "none",
+                }}
+              />
+            ) : null}
+            <Button variant="text" onClick={() => setMetricExpanded((value) => !value)} sx={{ alignSelf: "flex-start", mt: 0.8 }}>
+              {metricExpanded ? "Show less" : "Show more"}
+            </Button>
+          </Box>
         </Stack>
       </Paper>
 
@@ -296,7 +283,7 @@ export default function MetricPage() {
           <Stack spacing={2.0}>
             <SectionTitle
               title="How to use this metric with Evaluate"
-              subtitle="Load the metric from Hugging Face Evaluate and run either Python-like mode or GFF mode."
+              subtitle="This Space metric is GFF-only. Use the Playground workflow for evaluation."
             />
             <CodePanel>{EVALUATE_SNIPPET}</CodePanel>
           </Stack>

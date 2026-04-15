@@ -100,7 +100,7 @@ print(result)
 
 Permanent predictions and mapping are pulled automatically from:
 
-- `https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions`
+- `https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git`
 
 ## Ground truth file
 
