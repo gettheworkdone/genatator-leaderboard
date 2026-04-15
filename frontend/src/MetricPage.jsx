@@ -286,7 +286,7 @@ export default function MetricPage() {
         </Stack>
       </Paper>
 
-      <Grid container spacing={2} justifyContent="center" alignItems="stretch" sx={{ maxWidth: 1400, mx: "auto" }}>
+      <Grid container spacing={2} alignItems="stretch">
         <Grid item xs={12} md={4}>
           <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, height: "100%" }}>
             <Stack spacing={2.0}>
@@ -327,7 +327,7 @@ export default function MetricPage() {
 
           {error ? <Alert severity="error">{error}</Alert> : null}
 
-          <Grid container spacing={2} justifyContent="center" alignItems="stretch" sx={{ maxWidth: 1400, mx: "auto" }}>
+          <Grid container spacing={2} alignItems="stretch">
             <Grid item xs={12} md={5} sx={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
               <Typography variant="subtitle2" sx={{ mb: 0.8 }}>
                 Prediction GFF
