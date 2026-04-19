@@ -362,6 +362,21 @@ class LeaderboardService:
             "message": "Temporary model submitted. It will appear in the leaderboard when processing finishes.",
         }
 
+    def compute_temporary_preview(self, model_name: str, pred_gff_text: str) -> dict[str, object]:
+        display_name = model_name.strip() or "Temporary preview"
+        model_id = f"preview-{_slugify(display_name)}"
+        pred_df = gff_text_to_dataframe(str(pred_gff_text))
+        if pred_df.empty:
+            raise ValueError("Prediction file parsed to empty data.")
+        bundle = self._compute_model_bundle(
+            model_id=model_id,
+            display_name=display_name,
+            pred_gff=pred_df,
+            temporary=True,
+            source_file=None,
+        )
+        return self._serialize_temporary_preview(bundle)
+
     # ------------------------------------------------------------------
     # Initialization and uploads
     # ------------------------------------------------------------------
@@ -464,7 +479,7 @@ class LeaderboardService:
                 with self._lock:
                     self._state.upload_current = str(job["model_name"])
                     self._state.upload_queue_length = self._upload_queue.qsize()
-                if self._ground_truth_df is None and not self.ground_truth_path.exists():
+                if not self.ground_truth_path.exists():
                     continue
                 pred_df = gff_text_to_dataframe(str(job["pred_gff_text"]))
                 model_id = f"tmp-{_slugify(str(job['model_name']))}-{job['job_id'][:8]}"
@@ -733,6 +748,21 @@ class LeaderboardService:
             "interval_mi": payload["interval-level"]["mi"],
             "segmentation_f1": payload["segmentation-level"]["f1"],
             "segmentation_mi": payload["segmentation-level"]["mi"],
+        }
+
+    def _serialize_temporary_preview(self, bundle: ModelBundle) -> dict[str, object]:
+        full_by_branch: dict[str, dict[int, dict[str, object]]] = {}
+        for branch in BRANCHES:
+            per_k: dict[int, dict[str, object]] = {}
+            for k in DEFAULT_K_VALUES:
+                per_k[int(k)] = self._serialize_full_metric_row(bundle, branch=branch, k=int(k))
+            full_by_branch[branch] = per_k
+        return {
+            "model": self._serialize_model_overview(bundle),
+            "full_metrics": full_by_branch,
+            "stratifier": bundle.stratifier,
+            "detailed": bundle.detailed,
+            "prediction_index": bundle.prediction_index,
         }
 
     # ------------------------------------------------------------------
