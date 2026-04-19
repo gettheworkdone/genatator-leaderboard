@@ -13,7 +13,7 @@ import MetricPage from "./MetricPage";
 import LeaderboardPanel from "./LeaderboardPanel";
 
 export default function App() {
-  const [pageMode, setPageMode] = useState("metric");
+  const [pageMode, setPageMode] = useState("leaderboard");
 
   return (
     <Box>
@@ -27,18 +27,18 @@ export default function App() {
         <Stack spacing={3.2}>
           <Stack direction={{ xs: "column", md: "row" }} spacing={1.2}>
             <Button
-              variant={pageMode === "metric" ? "contained" : "outlined"}
-              size="large"
-              onClick={() => setPageMode("metric")}
-            >
-              Metric description
-            </Button>
-            <Button
               variant={pageMode === "leaderboard" ? "contained" : "outlined"}
               size="large"
               onClick={() => setPageMode("leaderboard")}
             >
               Leaderboard
+            </Button>
+            <Button
+              variant={pageMode === "metric" ? "contained" : "outlined"}
+              size="large"
+              onClick={() => setPageMode("metric")}
+            >
+              Metric description
             </Button>
           </Stack>
 
