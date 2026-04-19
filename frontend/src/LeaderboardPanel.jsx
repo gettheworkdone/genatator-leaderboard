@@ -9,7 +9,6 @@ import {
   Button,
   Chip,
   CircularProgress,
-  Grid,
   LinearProgress,
   MenuItem,
   Paper,
@@ -51,6 +50,7 @@ const CHART_COLORS = [
   "#1d4ed8",
   "#ea580c",
 ];
+const CHART_TICKS = [0, 150, 250, 350, 500];
 
 const METRIC_LABELS = {
   interval_f1: "F1 without segmentation",
@@ -73,6 +73,15 @@ const SORT_METRICS = [
   { value: "cds_segmentation_f1", label: "Rank by CDS F1 with segmentation" },
   { value: "cds_segmentation_mi", label: "Rank by CDS MI with segmentation" },
 ];
+
+const LEADERBOARD_DESCRIPTION_HTML = `
+  <p>The leaderboard is the comparative layer built on top of the metric described above. Its role is not to display a single ranking number, but to organize the metric outputs so that differences between models remain biologically interpretable. For that reason, the main table reports eight summary values: interval-level F1, interval-level MI, segmentation-level F1, and segmentation-level MI for the <strong>exon</strong> branch, and the same four quantities for the <strong>CDS</strong> branch.</p>
+  <p>The graph panel then shows any selected metric as a function of the tolerance parameter \\(k\\). This presentation is essential, because models that appear similar at one threshold may behave very differently across the full tolerance range. A model that improves only at large \\(k\\) is fundamentally different from a model that is already accurate near exact matching. Therefore, the curve view reveals boundary precision, robustness, and error sensitivity more clearly than a single operating point.</p>
+  <p>Once a specific value of \\(k\\) is selected, the <strong>Full metrics</strong> panel expands the summary into its components: matched and unmatched predictions, recovered and missed genes, MI counts, and exact exon or CDS part-level scores. In this way, a model’s position on the leaderboard can be explained rather than merely stated, since improvements can be traced to precision, recall, structural correctness, or isoform recovery.</p>
+  <p>The <strong>Stratifier</strong> panel presents the same metric outputs after grouping the data by strand, chromosome, or transcript type. As a result, users can determine whether a model is uniformly strong or whether its performance is concentrated in particular biological contexts. This grouped view is especially important when global averages would otherwise conceal systematic weaknesses.</p>
+  <p>The <strong>Detailed information</strong> panel provides transcript-resolved evidence for every ground-truth gene. For each reference transcript, it lists the supporting predictions, the minimum tolerance at which each support appears, and the contribution of the parent gene to multi-isoform recovery. Thus, the leaderboard remains auditable from the highest-level comparison down to individual biological objects.</p>
+  <p>In addition, the leaderboard allows temporary evaluation of user-supplied GFF predictions under the same rules. These temporary entries appear alongside the permanent models during the current session, while permanent inclusion requires adding the prediction to the maintained repository. This keeps model comparison open and reproducible without turning the leaderboard itself into long-term storage for arbitrary uploads.</p>
+`;
 
 function SectionTitle({ icon = null, title, subtitle = null }) {
   return (
@@ -130,6 +139,17 @@ function modelValueAtK(overview, model, branch, metricKey, selectedK) {
   return model.curves[branch][metricKey][index];
 }
 
+function computeColumnHighlights(rows, keys) {
+  const highlights = {};
+  for (const key of keys) {
+    const values = rows.map((row) => Number(row[key])).filter((value) => Number.isFinite(value));
+    if (!values.length) continue;
+    if (values.every((value) => value === values[0])) continue;
+    highlights[key] = Math.max(...values);
+  }
+  return highlights;
+}
+
 function MetricChip({ label, value, temporary = false }) {
   return (
     <Chip
@@ -180,9 +200,10 @@ export default function LeaderboardPanel() {
   const [geneList, setGeneList] = useState({ items: [], total: 0, page: 1, page_size: 25 });
   const [geneDetails, setGeneDetails] = useState({});
   const [expandedGene, setExpandedGene] = useState(false);
-  const [uploadModelName, setUploadModelName] = useState("");
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadMessage, setUploadMessage] = useState("");
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [temporaryPreview, setTemporaryPreview] = useState(null);
   const [leaderboardExpanded, setLeaderboardExpanded] = useState(false);
   const uploadInputRef = useRef(null);
   const selectedK = useMemo(() => {
@@ -214,46 +235,96 @@ export default function LeaderboardPanel() {
   }, [status?.running, status?.upload_current]);
 
   useEffect(() => {
+    if (window?.MathJax?.typesetPromise) {
+      window.MathJax.typesetPromise();
+    }
+  }, [leaderboardExpanded, overview]);
+
+  const modelsCombined = useMemo(() => {
+    const base = overview?.models || [];
+    return temporaryPreview?.model ? [...base, temporaryPreview.model] : base;
+  }, [overview, temporaryPreview]);
+
+  useEffect(() => {
     if (!overview) {
       return;
     }
     setSelectedKInput((current) => (current === "" ? "" : current || `${overview.default_k ?? 250}`));
-    if (overview.models?.length > 0) {
+    if (modelsCombined.length > 0) {
       setSelectedModels((current) => {
-        const allIds = overview.models.map((item) => item.model_id);
+        const allIds = modelsCombined.map((item) => item.model_id);
         if (!current.length) {
           return allIds;
         }
-        const missing = allIds.filter((item) => !current.includes(item));
-        return missing.length ? [...current, ...missing] : current;
+        const filtered = current.filter((item) => allIds.includes(item));
+        const missing = allIds.filter((item) => !filtered.includes(item));
+        return missing.length ? [...filtered, ...missing] : filtered;
       });
     }
-    if (!stratModel && overview.models?.length > 0) {
-      setStratModel(overview.models[0].model_id);
+    if ((!stratModel || !modelsCombined.some((item) => item.model_id === stratModel)) && modelsCombined.length > 0) {
+      setStratModel(modelsCombined[0].model_id);
     }
-  }, [overview, stratModel]);
+  }, [overview, stratModel, modelsCombined]);
 
   useEffect(() => {
-    if (!overview || !overview.models?.length) {
+    if (!overview || !modelsCombined.length) {
       setFullMetrics(null);
       return;
     }
+    const temporaryModelId = temporaryPreview?.model?.model_id;
+    const permanentIds = selectedModels.filter((item) => item !== temporaryModelId);
     const params = new URLSearchParams({
       branch: fullBranch,
       k: `${selectedK}`,
     });
-    if (selectedModels.length > 0) {
-      params.set("model_ids", selectedModels.join(","));
+    if (permanentIds.length > 0) {
+      params.set("model_ids", permanentIds.join(","));
     }
     fetch(`/api/leaderboard/full-metrics?${params.toString()}`)
       .then((response) => response.json())
-      .then((payload) => setFullMetrics(payload))
+      .then((payload) => {
+        const rows = [...(payload.rows || [])];
+        if (temporaryPreview && selectedModels.includes(temporaryModelId)) {
+          const localRow = temporaryPreview.full_metrics?.[fullBranch]?.[selectedK];
+          if (localRow) {
+            rows.push(localRow);
+          }
+        }
+        setFullMetrics({ ...payload, rows });
+      })
       .catch(() => setFullMetrics(null));
-  }, [overview, fullBranch, selectedK, selectedModels]);
+  }, [overview, fullBranch, selectedK, selectedModels, temporaryPreview, modelsCombined.length]);
 
   useEffect(() => {
     if (!stratModel) {
       setStratifier(null);
+      return;
+    }
+    if (temporaryPreview && stratModel === temporaryPreview.model.model_id) {
+      const rows = Object.entries(
+        temporaryPreview.stratifier?.[stratBranch]?.[stratRule] || {},
+      )
+        .map(([groupName, perK]) => {
+          const metrics = perK[selectedK];
+          if (!metrics) return null;
+          return {
+            group: groupName,
+            interval_precision: metrics["interval-level"]["precision"],
+            interval_recall: metrics["interval-level"]["recall"],
+            interval_f1: metrics["interval-level"]["f1"],
+            interval_mi: metrics["interval-level"]["mi"],
+            segmentation_precision: metrics["segmentation-level"]["precision"],
+            segmentation_recall: metrics["segmentation-level"]["recall"],
+            segmentation_f1: metrics["segmentation-level"]["f1"],
+            segmentation_mi: metrics["segmentation-level"]["mi"],
+            part_precision: metrics["part-level"]["precision"],
+            part_recall: metrics["part-level"]["recall"],
+            part_f1: metrics["part-level"]["f1"],
+          };
+        })
+        .filter(Boolean);
+      rows.sort((a, b) => Number(b.segmentation_f1) - Number(a.segmentation_f1));
+      setStratifier({ rows });
       return;
     }
     const params = new URLSearchParams({
@@ -266,7 +337,7 @@ export default function LeaderboardPanel() {
       .then((response) => response.json())
       .then((payload) => setStratifier(payload))
       .catch(() => setStratifier(null));
-  }, [stratModel, stratBranch, stratRule, selectedK]);
+  }, [stratModel, stratBranch, stratRule, selectedK, temporaryPreview]);
 
   useEffect(() => {
     const params = new URLSearchParams({
@@ -282,10 +353,10 @@ export default function LeaderboardPanel() {
   }, [detailBranch, geneQuery, genePage]);
 
   const mainRows = useMemo(() => {
-    if (!overview?.models) {
+    if (!modelsCombined.length) {
       return [];
     }
-    const rows = overview.models.map((model) => ({
+    const rows = modelsCombined.map((model) => ({
       model_id: model.model_id,
       display_name: model.display_name,
       temporary: model.temporary,
@@ -305,17 +376,29 @@ export default function LeaderboardPanel() {
       return a.display_name.localeCompare(b.display_name);
     });
     return rows;
-  }, [overview, selectedK, sortMetric]);
+  }, [overview, modelsCombined, selectedK, sortMetric]);
+
+  const mainColumnHighlights = useMemo(
+    () =>
+      computeColumnHighlights(mainRows, [
+        "exon_interval_f1",
+        "exon_interval_mi",
+        "exon_segmentation_f1",
+        "exon_segmentation_mi",
+        "cds_interval_f1",
+        "cds_interval_mi",
+        "cds_segmentation_f1",
+        "cds_segmentation_mi",
+      ]),
+    [mainRows],
+  );
 
   const chartModels = useMemo(() => {
-    if (!overview?.models) {
-      return [];
-    }
     if (!selectedModels.length) {
-      return overview.models;
+      return modelsCombined;
     }
-    return overview.models.filter((item) => selectedModels.includes(item.model_id));
-  }, [overview, selectedModels]);
+    return modelsCombined.filter((item) => selectedModels.includes(item.model_id));
+  }, [modelsCombined, selectedModels]);
 
   const chartData = useMemo(() => {
     if (!overview?.k_values || !chartModels.length) {
@@ -330,20 +413,82 @@ export default function LeaderboardPanel() {
     });
   }, [overview, chartModels, graphBranch, graphMetric]);
 
+  const fullColumnHighlights = useMemo(
+    () =>
+      computeColumnHighlights(fullMetrics?.rows || [], [
+        "interval_precision",
+        "interval_recall",
+        "interval_f1",
+        "interval_mi",
+        "segmentation_precision",
+        "segmentation_recall",
+        "segmentation_f1",
+        "segmentation_mi",
+        "part_precision",
+        "part_recall",
+        "part_f1",
+      ]),
+    [fullMetrics],
+  );
+
   const fetchGeneDetail = async (geneId) => {
     const cacheKey = `${detailBranch}|${geneId}|${selectedK}|${selectedModels.join(",")}`;
     if (geneDetails[cacheKey]) {
       return;
     }
+    const temporaryModelId = temporaryPreview?.model?.model_id;
+    const permanentIds = selectedModels.filter((item) => item !== temporaryModelId);
     const params = new URLSearchParams({
       branch: detailBranch,
       k: `${selectedK}`,
     });
-    if (selectedModels.length > 0) {
-      params.set("model_ids", selectedModels.join(","));
+    if (permanentIds.length > 0) {
+      params.set("model_ids", permanentIds.join(","));
     }
     const response = await fetch(`/api/leaderboard/gene/${encodeURIComponent(geneId)}?${params.toString()}`);
     const payload = await response.json();
+    if (temporaryPreview && selectedModels.includes(temporaryModelId)) {
+      payload.gene.transcripts = payload.gene.transcripts.map((transcript) => {
+        const local = temporaryPreview.detailed?.[detailBranch]?.[transcript.transcript_id];
+        if (!local) {
+          return transcript;
+        }
+        const intervalMap = Object.fromEntries(
+          (local["interval-level"]?.predictions || [])
+            .filter((item) => item.min_k !== null && item.min_k !== undefined)
+            .map((item) => [item.pred_id, Number(item.min_k)]),
+        );
+        const segmentationMap = Object.fromEntries(
+          (local["segmentation-level"]?.predictions || [])
+            .filter((item) => item.min_k !== null && item.min_k !== undefined)
+            .map((item) => [item.pred_id, Number(item.min_k)]),
+        );
+        const extras = [...new Set([...Object.keys(intervalMap), ...Object.keys(segmentationMap)])].map((predId) => {
+          const predMeta = temporaryPreview.prediction_index?.[predId] || {};
+          const candidates = [intervalMap[predId], segmentationMap[predId]].filter((value) => Number.isFinite(value));
+          const minK = candidates.length ? Math.min(...candidates) : null;
+          return {
+            model_id: temporaryModelId,
+            model_name: temporaryPreview.model.display_name,
+            temporary: true,
+            pred_id: predId,
+            chromosome: predMeta.chromosome,
+            start: predMeta.start,
+            end: predMeta.end,
+            strand: predMeta.strand,
+            exon_segments: predMeta.exon_segments || [],
+            cds_segments: predMeta.cds_segments || [],
+            min_k: minK,
+            matched_at_k: minK !== null && minK <= selectedK,
+          };
+        });
+        return {
+          ...transcript,
+          matched_predictions: [...transcript.matched_predictions, ...extras],
+          matched_prediction_count: transcript.matched_predictions.length + extras.length,
+        };
+      });
+    }
     setGeneDetails((current) => ({ ...current, [cacheKey]: payload }));
   };
 
@@ -359,25 +504,31 @@ export default function LeaderboardPanel() {
       setUploadMessage("Please choose a prediction GFF file.");
       return;
     }
-    const pred_gff_text = await uploadFile.text();
-    const response = await fetch("/api/leaderboard/upload", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model_name: uploadModelName,
-        pred_gff_text,
-      }),
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      setUploadMessage(payload.detail || "Upload failed.");
-      return;
-    }
-    setUploadMessage(payload.message || "Temporary model submitted.");
-    setUploadModelName("");
-    setUploadFile(null);
-    if (uploadInputRef.current) {
-      uploadInputRef.current.value = "";
+    setUploadLoading(true);
+    try {
+      const pred_gff_text = await uploadFile.text();
+      const response = await fetch("/api/leaderboard/temporary-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model_name: "Temporary preview",
+          pred_gff_text,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setUploadMessage(payload.detail || "Upload failed.");
+        return;
+      }
+      setTemporaryPreview(payload);
+      setUploadMessage("Temporary preview computed. It is visible only in this session and disappears after page refresh.");
+      setGeneDetails({});
+      setUploadFile(null);
+      if (uploadInputRef.current) {
+        uploadInputRef.current.value = "";
+      }
+    } finally {
+      setUploadLoading(false);
     }
   };
 
@@ -419,49 +570,7 @@ export default function LeaderboardPanel() {
                 overflow: "hidden",
                 pr: 0.5,
               }}
-            >
-              <Typography color="text.secondary">
-            The leaderboard is designed not as a popularity table, but as a <strong>scientifically interpretable comparison framework</strong>.
-            Its main panel reports eight primary summary scores: interval-level F1, interval-level MI, segmentation-level F1, and
-            segmentation-level MI for the exon branch, and the same four metrics for the CDS branch. Together, these scores distinguish
-            four different aspects of performance: broad transcript recovery, recovery of isoform diversity, biologically correct internal
-            reconstruction, and coding-structure fidelity. This prevents a model from appearing strong on the basis of a single favorable
-            metric while failing in another biologically essential dimension.
-              </Typography>
-              <Typography color="text.secondary">
-            The leaderboard does not rely on a single operating point alone. Instead, it visualizes each selected metric as a{" "}
-            <strong>continuous function of the tolerance parameter (k)</strong>. This presentation is scientifically important, because
-            it exposes how rapidly model quality changes as one moves from exact matching toward more permissive matching. A model whose
-            curve rises only under large tolerances is fundamentally different from a model that performs well near exact matching, even
-            if both happen to share a similar score at one chosen value of (k). The curve view therefore captures robustness, boundary
-            precision, and error sensitivity in a way that a single scalar cannot.
-              </Typography>
-              <Typography color="text.secondary">
-            Once a specific tolerance is selected, the leaderboard expands into a <strong>full metrics view</strong>, where the aggregate
-            scores are decomposed into their biological components: matched and unmatched predictions, recovered and missed genes, part-level
-            exact scores, and multi-isoform counts. This makes the comparison transparent. Users can see whether a model achieves a favorable
-            F1 by high precision, by high recall, or by a particular balance between the two. They can also determine whether performance
-            differences arise from transcript localization, from segmentation fidelity, or from isoform recovery. In this sense, the leaderboard
-            is intended not merely to rank models, but to explain ranking.
-              </Typography>
-              <Typography color="text.secondary">
-            The stratified and transcript-resolved sections extend this philosophy further. A model may rank well overall while failing
-            systematically on lncRNAs, on one strand, or on particular chromosomes. Likewise, an aggregate metric may hide whether errors
-            are concentrated in a small subset of difficult genes or are distributed broadly across the annotation. By placing gene- and
-            transcript-level evidence directly under the global comparison, the leaderboard preserves scientific traceability from summary
-            score to underlying annotation event. This is especially important for genome annotation, where the central question is not only
-            which model scores highest, but <strong>what kinds of biological structures each model can and cannot recover</strong>.
-              </Typography>
-              <Typography color="text.secondary">
-            In summary, the metric and leaderboard are built around a single principle: <strong>biological validity should take precedence
-            over superficial agreement</strong>. The exon branch evaluates transcript reconstruction across coding and non-coding genes.
-            The CDS branch focuses on preservation of coding structure. Interval-level scores measure localization, segmentation-level
-            scores measure structural correctness, MI measures isoform recovery, part-level metrics diagnose local element detection, and
-            stratified plus transcript-resolved views expose where and why models succeed or fail. Taken together, this framework provides
-            a more faithful assessment of ab initio annotation quality than conventional per-base evaluation and is intended to serve as a
-            rigorous benchmark for the next generation of genome annotation models.
-              </Typography>
-            </Box>
+            ><Box className="metric-description" dangerouslySetInnerHTML={{ __html: LEADERBOARD_DESCRIPTION_HTML }} /></Box>
             {!leaderboardExpanded ? (
               <Box
                 sx={{
@@ -503,19 +612,12 @@ export default function LeaderboardPanel() {
           <Stack spacing={1.8}>
             <SectionTitle
               title="Temporary custom submission"
-              subtitle="Upload a prediction GFF and a model name to embed a temporary result across all leaderboard panels."
+              subtitle="Upload a prediction GFF and compute a temporary preview for this browser session only."
             />
             <Typography color="text.secondary">
-              Temporary submissions are processed in memory only. They are not written to persistent Space storage and disappear
-              after restart. To consolidate a model permanently on the public leaderboard, open a pull request to the repository used
-              for bundled prediction files.
+              Temporary submissions are computed on demand and shown only on this page for the current session. They are not written
+              to persistent Space storage and are removed after refresh. For permanent inclusion, open a pull request to the permanent repository.
             </Typography>
-            <TextField
-              label="Model name"
-              value={uploadModelName}
-              onChange={(event) => setUploadModelName(event.target.value)}
-              fullWidth
-            />
             <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
               {uploadFile ? uploadFile.name : "Choose prediction GFF"}
               <input
@@ -526,10 +628,13 @@ export default function LeaderboardPanel() {
                 onChange={(event) => setUploadFile(event.target.files?.[0] || null)}
               />
             </Button>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.1}>
-              <Button variant="contained" onClick={submitUpload}>Submit temporary model</Button>
-              <Button variant="outlined" onClick={reloadLeaderboard} startIcon={<RefreshIcon />}>Reload bundled models</Button>
-            </Stack>
+            <Button variant="contained" onClick={submitUpload} disabled={uploadLoading}>Submit</Button>
+            {uploadLoading ? (
+              <Box className="score-calc-animation">
+                <span className="orb" />
+                <Typography color="text.secondary">Calculating score trajectories and transcript evidence…</Typography>
+              </Box>
+            ) : null}
             {uploadMessage ? <Alert severity="info">{uploadMessage}</Alert> : null}
             <Alert severity="info">
               Permanent repository: <span className="mono">{overview?.source_repository_url || "https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git"}</span>
@@ -581,7 +686,7 @@ export default function LeaderboardPanel() {
             </Stack>
           </Stack>
 
-          {!overview?.models?.length ? (
+          {!modelsCombined.length ? (
             <Alert severity="info">No leaderboard models are available yet.</Alert>
           ) : (
             <Box className="result-table-wrap">
@@ -596,11 +701,11 @@ export default function LeaderboardPanel() {
                   <TableRow>
                     <TableCell>F1 w/o seg.</TableCell>
                     <TableCell>MI w/o seg.</TableCell>
-                    <TableCell>F1 with seg.</TableCell>
+                    <TableCell className="rank-column-highlight">F1 with seg.</TableCell>
                     <TableCell>MI with seg.</TableCell>
                     <TableCell>F1 w/o seg.</TableCell>
                     <TableCell>MI w/o seg.</TableCell>
-                    <TableCell>F1 with seg.</TableCell>
+                    <TableCell className="rank-column-highlight">F1 with seg.</TableCell>
                     <TableCell>MI with seg.</TableCell>
                   </TableRow>
                 </TableHead>
@@ -614,14 +719,14 @@ export default function LeaderboardPanel() {
                           {row.temporary ? <Chip size="small" variant="outlined" label="temporary" /> : null}
                         </Stack>
                       </TableCell>
-                      <TableCell>{formatScore(row.exon_interval_f1)}</TableCell>
-                      <TableCell>{formatScore(row.exon_interval_mi, 0)}</TableCell>
-                      <TableCell>{formatScore(row.exon_segmentation_f1)}</TableCell>
-                      <TableCell>{formatScore(row.exon_segmentation_mi, 0)}</TableCell>
-                      <TableCell>{formatScore(row.cds_interval_f1)}</TableCell>
-                      <TableCell>{formatScore(row.cds_interval_mi, 0)}</TableCell>
-                      <TableCell>{formatScore(row.cds_segmentation_f1)}</TableCell>
-                      <TableCell>{formatScore(row.cds_segmentation_mi, 0)}</TableCell>
+                      <TableCell sx={mainColumnHighlights.exon_interval_f1 !== undefined && Number(row.exon_interval_f1) === mainColumnHighlights.exon_interval_f1 ? { fontWeight: 800 } : {}}>{formatScore(row.exon_interval_f1)}</TableCell>
+                      <TableCell sx={mainColumnHighlights.exon_interval_mi !== undefined && Number(row.exon_interval_mi) === mainColumnHighlights.exon_interval_mi ? { fontWeight: 800 } : {}}>{formatScore(row.exon_interval_mi, 0)}</TableCell>
+                      <TableCell className="rank-column-highlight" sx={mainColumnHighlights.exon_segmentation_f1 !== undefined && Number(row.exon_segmentation_f1) === mainColumnHighlights.exon_segmentation_f1 ? { fontWeight: 800 } : {}}>{formatScore(row.exon_segmentation_f1)}</TableCell>
+                      <TableCell sx={mainColumnHighlights.exon_segmentation_mi !== undefined && Number(row.exon_segmentation_mi) === mainColumnHighlights.exon_segmentation_mi ? { fontWeight: 800 } : {}}>{formatScore(row.exon_segmentation_mi, 0)}</TableCell>
+                      <TableCell sx={mainColumnHighlights.cds_interval_f1 !== undefined && Number(row.cds_interval_f1) === mainColumnHighlights.cds_interval_f1 ? { fontWeight: 800 } : {}}>{formatScore(row.cds_interval_f1)}</TableCell>
+                      <TableCell sx={mainColumnHighlights.cds_interval_mi !== undefined && Number(row.cds_interval_mi) === mainColumnHighlights.cds_interval_mi ? { fontWeight: 800 } : {}}>{formatScore(row.cds_interval_mi, 0)}</TableCell>
+                      <TableCell className="rank-column-highlight" sx={mainColumnHighlights.cds_segmentation_f1 !== undefined && Number(row.cds_segmentation_f1) === mainColumnHighlights.cds_segmentation_f1 ? { fontWeight: 800 } : {}}>{formatScore(row.cds_segmentation_f1)}</TableCell>
+                      <TableCell sx={mainColumnHighlights.cds_segmentation_mi !== undefined && Number(row.cds_segmentation_mi) === mainColumnHighlights.cds_segmentation_mi ? { fontWeight: 800 } : {}}>{formatScore(row.cds_segmentation_mi, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -656,8 +761,8 @@ export default function LeaderboardPanel() {
 
           <Autocomplete
             multiple
-            options={overview?.models || []}
-            value={(overview?.models || []).filter((item) => selectedModels.includes(item.model_id))}
+            options={modelsCombined}
+            value={modelsCombined.filter((item) => selectedModels.includes(item.model_id))}
             disableCloseOnSelect
             getOptionLabel={(option) => option.display_name}
             onChange={(_, value) => setSelectedModels(value.map((item) => item.model_id))}
@@ -676,10 +781,13 @@ export default function LeaderboardPanel() {
                 }}
               >
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="k" type="number" domain={[0, 500]} allowDecimals={false} />
+                <XAxis dataKey="k" type="number" domain={[0, 500]} allowDecimals={false} ticks={CHART_TICKS} />
                 <YAxis />
                 <Tooltip />
                 <Legend />
+                {CHART_TICKS.map((tick) => (
+                  <ReferenceLine key={`tick-${tick}`} x={tick} stroke="#94a3b8" strokeDasharray="4 4" />
+                ))}
                 <ReferenceLine x={selectedK} stroke="#334155" strokeDasharray="4 4" />
                 {chartModels.map((model, index) => (
                   <Line
@@ -743,17 +851,17 @@ export default function LeaderboardPanel() {
                           {row.temporary ? <Chip size="small" variant="outlined" label="temporary" /> : null}
                         </Stack>
                       </TableCell>
-                      <TableCell>{formatScore(row.interval_precision)}</TableCell>
-                      <TableCell>{formatScore(row.interval_recall)}</TableCell>
-                      <TableCell>{formatScore(row.interval_f1)}</TableCell>
-                      <TableCell>{formatScore(row.interval_mi, 0)}</TableCell>
-                      <TableCell>{formatScore(row.segmentation_precision)}</TableCell>
-                      <TableCell>{formatScore(row.segmentation_recall)}</TableCell>
-                      <TableCell>{formatScore(row.segmentation_f1)}</TableCell>
-                      <TableCell>{formatScore(row.segmentation_mi, 0)}</TableCell>
-                      <TableCell>{formatScore(row.part_precision)}</TableCell>
-                      <TableCell>{formatScore(row.part_recall)}</TableCell>
-                      <TableCell>{formatScore(row.part_f1)}</TableCell>
+                      <TableCell sx={fullColumnHighlights.interval_precision !== undefined && Number(row.interval_precision) === fullColumnHighlights.interval_precision ? { fontWeight: 800 } : {}}>{formatScore(row.interval_precision)}</TableCell>
+                      <TableCell sx={fullColumnHighlights.interval_recall !== undefined && Number(row.interval_recall) === fullColumnHighlights.interval_recall ? { fontWeight: 800 } : {}}>{formatScore(row.interval_recall)}</TableCell>
+                      <TableCell sx={fullColumnHighlights.interval_f1 !== undefined && Number(row.interval_f1) === fullColumnHighlights.interval_f1 ? { fontWeight: 800 } : {}}>{formatScore(row.interval_f1)}</TableCell>
+                      <TableCell sx={fullColumnHighlights.interval_mi !== undefined && Number(row.interval_mi) === fullColumnHighlights.interval_mi ? { fontWeight: 800 } : {}}>{formatScore(row.interval_mi, 0)}</TableCell>
+                      <TableCell sx={fullColumnHighlights.segmentation_precision !== undefined && Number(row.segmentation_precision) === fullColumnHighlights.segmentation_precision ? { fontWeight: 800 } : {}}>{formatScore(row.segmentation_precision)}</TableCell>
+                      <TableCell sx={fullColumnHighlights.segmentation_recall !== undefined && Number(row.segmentation_recall) === fullColumnHighlights.segmentation_recall ? { fontWeight: 800 } : {}}>{formatScore(row.segmentation_recall)}</TableCell>
+                      <TableCell sx={fullColumnHighlights.segmentation_f1 !== undefined && Number(row.segmentation_f1) === fullColumnHighlights.segmentation_f1 ? { fontWeight: 800 } : {}}>{formatScore(row.segmentation_f1)}</TableCell>
+                      <TableCell sx={fullColumnHighlights.segmentation_mi !== undefined && Number(row.segmentation_mi) === fullColumnHighlights.segmentation_mi ? { fontWeight: 800 } : {}}>{formatScore(row.segmentation_mi, 0)}</TableCell>
+                      <TableCell sx={fullColumnHighlights.part_precision !== undefined && Number(row.part_precision) === fullColumnHighlights.part_precision ? { fontWeight: 800 } : {}}>{formatScore(row.part_precision)}</TableCell>
+                      <TableCell sx={fullColumnHighlights.part_recall !== undefined && Number(row.part_recall) === fullColumnHighlights.part_recall ? { fontWeight: 800 } : {}}>{formatScore(row.part_recall)}</TableCell>
+                      <TableCell sx={fullColumnHighlights.part_f1 !== undefined && Number(row.part_f1) === fullColumnHighlights.part_f1 ? { fontWeight: 800 } : {}}>{formatScore(row.part_f1)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -788,7 +896,7 @@ export default function LeaderboardPanel() {
               onChange={(event) => setStratModel(event.target.value)}
               sx={uniformFieldSx}
             >
-              {(overview?.models || []).map((model) => (
+              {modelsCombined.map((model) => (
                 <MenuItem key={model.model_id} value={model.model_id}>{model.display_name}</MenuItem>
               ))}
             </TextField>
@@ -875,6 +983,12 @@ export default function LeaderboardPanel() {
               {geneList.items.map((gene) => {
                 const cacheKey = `${detailBranch}|${gene.gene_id}|${selectedK}|${selectedModels.join(",")}`;
                 const detail = geneDetails[cacheKey];
+                const matchedAcrossGene = detail
+                  ? detail.gene.transcripts.reduce(
+                      (accumulator, transcript) => accumulator + (transcript.matched_prediction_count || 0),
+                      0,
+                    )
+                  : null;
                 return (
                   <Accordion
                     key={`${detailBranch}-${gene.gene_id}`}
@@ -900,6 +1014,7 @@ export default function LeaderboardPanel() {
                         </Stack>
                         <Typography variant="body2" color="text.secondary">
                           {gene.transcript_count} transcript{gene.transcript_count === 1 ? "" : "s"}
+                          {matchedAcrossGene !== null ? ` · ${matchedAcrossGene} matched predictions across all transcripts` : ""}
                         </Typography>
                       </Stack>
                     </AccordionSummary>
@@ -955,6 +1070,7 @@ export default function LeaderboardPanel() {
                                         <TableHead>
                                           <TableRow>
                                             <TableCell>Model</TableCell>
+                                            <TableCell>Strand</TableCell>
                                             <TableCell>Prediction</TableCell>
                                             <TableCell>Coordinate</TableCell>
                                             <TableCell>Exon segments</TableCell>
@@ -972,10 +1088,11 @@ export default function LeaderboardPanel() {
                                                   {match.temporary ? <Chip size="small" variant="outlined" label="temporary" /> : null}
                                                 </Stack>
                                               </TableCell>
+                                              <TableCell>{match.strand || "—"}</TableCell>
                                               <TableCell><ReadonlyCellField value={match.pred_id} /></TableCell>
                                               <TableCell>
                                                 <ReadonlyCellField
-                                                  value={match.chromosome ? `${match.chromosome}:${match.start}-${match.end} (${match.strand})` : "—"}
+                                                  value={match.chromosome ? `${match.chromosome}:${match.start}-${match.end}` : "—"}
                                                 />
                                               </TableCell>
                                               <TableCell><SegmentBox segments={match.exon_segments} /></TableCell>
