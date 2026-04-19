@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -45,7 +45,6 @@ print(len(result["detailed"]["exon"]), list(result["detailed"]["exon"].keys())[:
 
 const METRIC_DESCRIPTION_HTML = `
 <section id="metric-description">
-  <h2>Metric description</h2>
   <p>This metric evaluates <em>ab initio</em> genome annotation at the level of biologically meaningful objects rather than isolated nucleotides. The motivation is straightforward: small boundary errors may have only a minor effect on basewise agreement, yet they can alter splice structure, disrupt the coding frame, or change the resulting protein. Therefore, correctness is defined through transcript and gene reconstruction. In this setting, interval-level agreement is summarized by</p>
   <div class="equation">\\[F^{K}_{\\mathrm{interval}}=\\frac{2TP}{2TP+FP+FN}.\\]</div>
   <p>The metric is computed in two branches. The <strong>exon</strong> branch measures recovery of transcript architecture across protein-coding and long non-coding genes, whereas the <strong>CDS</strong> branch measures recovery of the protein-coding core of mRNA transcripts. Thus, the exon branch reflects transcript structure in the broad sense, while the CDS branch isolates coding fidelity.</p>
@@ -129,6 +128,12 @@ export default function MetricPage() {
       k,
     };
   }, [result, selectedKInput]);
+
+  useEffect(() => {
+    if (window?.MathJax?.typesetPromise) {
+      window.MathJax.typesetPromise();
+    }
+  }, [metricExpanded, result]);
 
   const reset = () => {
     setPredFile(null);
