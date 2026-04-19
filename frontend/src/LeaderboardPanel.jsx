@@ -246,6 +246,17 @@ export default function LeaderboardPanel() {
   }, [overview, temporaryPreview]);
 
   useEffect(() => {
+    if (window?.MathJax?.typesetPromise) {
+      window.MathJax.typesetPromise();
+    }
+  }, [leaderboardExpanded, overview]);
+
+  const modelsCombined = useMemo(() => {
+    const base = overview?.models || [];
+    return temporaryPreview?.model ? [...base, temporaryPreview.model] : base;
+  }, [overview, temporaryPreview]);
+
+  useEffect(() => {
     if (!overview) {
       return;
     }
@@ -470,6 +481,24 @@ export default function LeaderboardPanel() {
     [fullMetrics],
   );
 
+  const fullColumnHighlights = useMemo(
+    () =>
+      computeColumnHighlights(fullMetrics?.rows || [], [
+        "interval_precision",
+        "interval_recall",
+        "interval_f1",
+        "interval_mi",
+        "segmentation_precision",
+        "segmentation_recall",
+        "segmentation_f1",
+        "segmentation_mi",
+        "part_precision",
+        "part_recall",
+        "part_f1",
+      ]),
+    [fullMetrics],
+  );
+
   const fetchGeneDetail = async (geneId) => {
     const tempId = temporaryPreview?.model?.model_id;
     const permanentIds = selectedModels.filter((id) => id !== tempId);
@@ -542,11 +571,12 @@ export default function LeaderboardPanel() {
     setUploadLoading(true);
     try {
       const pred_gff_text = await uploadFile.text();
+      const baseName = uploadFile.name.replace(/\.[^.]+$/, "") || "Temporary preview";
       const response = await fetch("/api/leaderboard/temporary-preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model_name: "Temporary preview",
+          model_name: `Temporary preview: ${baseName}`,
           pred_gff_text,
         }),
       });
@@ -562,6 +592,8 @@ export default function LeaderboardPanel() {
       if (uploadInputRef.current) {
         uploadInputRef.current.value = "";
       }
+    } catch (error) {
+      setUploadMessage(error?.message || "Upload failed.");
     } finally {
       setUploadLoading(false);
     }
