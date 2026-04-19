@@ -51,6 +51,7 @@ const CHART_COLORS = [
   "#1d4ed8",
   "#ea580c",
 ];
+const CHART_TICKS = [0, 150, 250, 350, 500];
 
 const CHART_TICKS = [0, 150, 250, 350, 500];
 
@@ -132,11 +133,11 @@ function BranchTabs({ value, onChange }) {
     </Tabs>
   );
 }
+const formatScore = (v, d = 3) => (v === null || v === undefined || Number.isNaN(Number(v)) ? "—" : (Number.isInteger(v) ? `${v}` : Number(v).toFixed(d)));
+const formatSegments = (segments) => (!segments?.length ? "—" : segments.map(([s, e]) => `[${s}, ${e}]`).join(", "));
 
 function modelValueAtK(overview, model, branch, metricKey, selectedK) {
-  if (!overview || !model?.curves?.[branch]?.[metricKey]) {
-    return null;
-  }
+  if (!overview || !model?.curves?.[branch]?.[metricKey]) return null;
   const index = Math.max(0, Math.min(Number(selectedK) || 0, overview.k_values.length - 1));
   return model.curves[branch][metricKey][index];
 }
@@ -476,6 +477,8 @@ export default function LeaderboardPanel() {
   }, [detailBranch, geneQuery, genePage]);
 
   const fetchGeneDetail = async (geneId) => {
+    const tempId = temporaryPreview?.model?.model_id;
+    const permanentIds = selectedModels.filter((id) => id !== tempId);
     const cacheKey = `${detailBranch}|${geneId}|${selectedK}|${selectedModels.join(",")}`;
     if (geneDetails[cacheKey]) {
       return;
