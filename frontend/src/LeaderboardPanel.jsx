@@ -301,6 +301,17 @@ export default function LeaderboardPanel() {
   }, [overview, temporaryPreview]);
 
   useEffect(() => {
+    if (window?.MathJax?.typesetPromise) {
+      window.MathJax.typesetPromise();
+    }
+  }, [leaderboardExpanded, overview]);
+
+  const modelsCombined = useMemo(() => {
+    const base = overview?.models || [];
+    return temporaryPreview?.model ? [...base, temporaryPreview.model] : base;
+  }, [overview, temporaryPreview]);
+
+  useEffect(() => {
     if (!overview) {
       return;
     }
@@ -488,6 +499,24 @@ export default function LeaderboardPanel() {
     const params = new URLSearchParams({ branch: detailBranch, query: geneQuery, page: `${genePage}`, page_size: "25" });
     fetch(`/api/leaderboard/genes?${params.toString()}`).then((r) => r.json()).then(setGeneList).catch(() => setGeneList({ items: [], total: 0, page: 1, page_size: 25 }));
   }, [detailBranch, geneQuery, genePage]);
+
+  const fullColumnHighlights = useMemo(
+    () =>
+      computeColumnHighlights(fullMetrics?.rows || [], [
+        "interval_precision",
+        "interval_recall",
+        "interval_f1",
+        "interval_mi",
+        "segmentation_precision",
+        "segmentation_recall",
+        "segmentation_f1",
+        "segmentation_mi",
+        "part_precision",
+        "part_recall",
+        "part_f1",
+      ]),
+    [fullMetrics],
+  );
 
   const fullColumnHighlights = useMemo(
     () =>
