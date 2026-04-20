@@ -265,7 +265,7 @@ export default function MetricPage() {
     <Stack spacing={3.2}>
       <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 } }}>
         <Stack spacing={2.2}>
-          <SectionTitle title="Metric description" subtitle="Paper-style rationale for biologically faithful evaluation of ab initio annotation." />
+          <SectionTitle title="Metric description" />
 
           <Box sx={{ position: "relative" }}>
             <Box

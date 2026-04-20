@@ -73,6 +73,8 @@ const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
 const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
+const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
+
 const METRIC_LABELS = {
   interval_f1: "F1 without segmentation",
   interval_precision: "Precision without segmentation",
@@ -698,10 +700,7 @@ export default function LeaderboardPanel() {
     <Stack spacing={3.2}>
       <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 } }}>
         <Stack spacing={2}>
-          <SectionTitle
-            title="Leaderboard description"
-            subtitle="Scientifically interpretable comparison of ab initio annotation models."
-          />
+          <SectionTitle title="Leaderboard description" />
 
           <Box sx={{ position: "relative" }}>
             <Box
