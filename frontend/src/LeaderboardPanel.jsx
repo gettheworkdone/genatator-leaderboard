@@ -55,6 +55,8 @@ const CHART_TICKS = [0, 150, 250, 350, 500];
 
 const CHART_TICKS = [0, 150, 250, 350, 500];
 
+const CHART_TICKS = [0, 150, 250, 350, 500];
+
 const METRIC_LABELS = {
   interval_f1: "F1 without segmentation",
   interval_precision: "Precision without segmentation",
@@ -133,8 +135,6 @@ function BranchTabs({ value, onChange }) {
     </Tabs>
   );
 }
-const formatScore = (v, d = 3) => (v === null || v === undefined || Number.isNaN(Number(v)) ? "—" : (Number.isInteger(v) ? `${v}` : Number(v).toFixed(d)));
-const formatSegments = (segments) => (!segments?.length ? "—" : segments.map(([s, e]) => `[${s}, ${e}]`).join(", "));
 
 function modelValueAtK(overview, model, branch, metricKey, selectedK) {
   if (!overview || !model?.curves?.[branch]?.[metricKey]) return null;
@@ -389,14 +389,14 @@ export default function LeaderboardPanel() {
     }
 
     const temporaryModelId = temporaryPreview?.model?.model_id;
-    const permanentIds = selectedModels.filter((item) => item !== temporaryModelId);
+    const fullMetricsModelIds = selectedModels.filter((item) => item !== temporaryModelId);
     const params = new URLSearchParams({
       branch: fullBranch,
       k: `${selectedK}`,
     });
 
-    if (permanentIds.length > 0) {
-      params.set("model_ids", permanentIds.join(","));
+    if (fullMetricsModelIds.length > 0) {
+      params.set("model_ids", fullMetricsModelIds.join(","));
     }
 
     fetch(`/api/leaderboard/full-metrics?${params.toString()}`)
@@ -485,14 +485,14 @@ export default function LeaderboardPanel() {
     }
 
     const temporaryModelId = temporaryPreview?.model?.model_id;
-    const permanentIds = selectedModels.filter((item) => item !== temporaryModelId);
+    const geneDetailModelIds = selectedModels.filter((item) => item !== temporaryModelId);
     const params = new URLSearchParams({
       branch: detailBranch,
       k: `${selectedK}`,
     });
 
-    if (permanentIds.length > 0) {
-      params.set("model_ids", permanentIds.join(","));
+    if (geneDetailModelIds.length > 0) {
+      params.set("model_ids", geneDetailModelIds.join(","));
     }
 
     const response = await fetch(`/api/leaderboard/gene/${encodeURIComponent(geneId)}?${params.toString()}`);
