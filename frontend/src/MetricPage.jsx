@@ -43,7 +43,7 @@ print(result["stratifier"]["exon"]["transcript_type"]["mRNA"][250])
 # Use detailed transcript output returned by Evaluate.
 print(len(result["detailed"]["exon"]), list(result["detailed"]["exon"].keys())[:3])`;
 
-const METRIC_DESCRIPTION_HTML = `
+const METRIC_DESCRIPTION_HTML = String.raw`
 <section id="metric-description">
   <p>
     This metric is built for the situation in which a prediction may look locally accurate and still be biologically wrong.
@@ -309,19 +309,20 @@ export default function MetricPage() {
           <Stack spacing={2.0}>
             <SectionTitle
               title="Accepted input"
-              subtitle="The playground works with GFF/GFF3-style annotations and evaluates both branches across k = 0..500."
+              subtitle="The playground accepts GFF or GFF3-style annotation files and evaluates both branches over a user-selected range of k values."
             />
-          <Typography color="text.secondary">
-            Provide a prediction GFF and a ground-truth GFF. The evaluator parses transcript, exon, and CDS features directly
-            from these files and computes the full set of branch-specific metrics for <span className="mono">k = 0…500</span>.
-            The prediction file should describe transcript models produced by the method under evaluation. The ground-truth file
-            should contain the reference transcript annotation for the same genomic region.
-          </Typography>
-          <Typography color="text.secondary">
-            The leaderboard uses <span className="mono">use_strand=True</span> together with transcript filters appropriate for each
-            branch. The exon branch evaluates <span className="mono">mRNA</span> and <span className="mono">lnc_RNA</span> transcripts.
-            The CDS branch evaluates <span className="mono">mRNA</span> transcripts with annotated coding sequence.
-          </Typography>
+            <Typography color="text.secondary">
+              You should provide two files: a prediction GFF and a ground-truth GFF. The evaluator reads transcript, exon, and
+              CDS features directly from these annotations and computes the complete set of branch-specific metrics for the chosen
+              k values. The prediction file should contain the transcript models produced by the method being assessed. The
+              ground-truth file should contain the reference transcript annotation for the same genomic region.
+            </Typography>
+            <Typography color="text.secondary">
+              In the leaderboard, evaluation is performed with <span className="mono">use_strand=True</span> and with transcript
+              filters chosen separately for each branch. The exon branch includes <span className="mono">mRNA</span> and{" "}
+              <span className="mono">lnc_RNA</span> transcripts, whereas the CDS branch includes <span className="mono">mRNA</span>{" "}
+              transcripts that have annotated coding sequence.
+            </Typography>
           </Stack>
         </Paper>
         <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, height: "100%" }}>

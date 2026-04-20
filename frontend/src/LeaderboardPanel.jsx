@@ -69,6 +69,8 @@ const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
 const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
+const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
+
 const METRIC_LABELS = {
   interval_f1: "F1 without segmentation",
   interval_precision: "Precision without segmentation",
@@ -91,7 +93,7 @@ const SORT_METRICS = [
   { value: "cds_segmentation_mi", label: "Rank by CDS MI with segmentation" },
 ];
 
-const LEADERBOARD_DESCRIPTION_HTML = `
+const LEADERBOARD_DESCRIPTION_HTML = String.raw`
   <p>
     The leaderboard is meant to help you read the metric in stages, from a quick overview to transcript-level evidence.
     The first panel, <strong>Temporary submission</strong>, lets you upload a prediction GFF and give it a model name for
@@ -711,17 +713,18 @@ export default function LeaderboardPanel() {
             </Box>
 
             {!leaderboardExpanded ? (
-              <Box
-                sx={{
-                  position: "absolute",
-                  bottom: 44,
-                  left: 0,
-                  right: 0,
-                  height: 64,
-                  background: "linear-gradient(to bottom, rgba(248,251,250,0), rgba(248,251,250,1))",
-                  pointerEvents: "none",
-                }}
-              />
+                <Box
+                  sx={{
+                    position: "absolute",
+                    bottom: 44,
+                    left: 0,
+                    right: 0,
+                    height: 84,
+                    background:
+                      "linear-gradient(to bottom, rgba(248,251,250,0), rgba(248,251,250,0.72) 52%, rgba(248,251,250,0.98) 100%)",
+                    pointerEvents: "none",
+                  }}
+                />
             ) : null}
 
             <Button variant="text" onClick={() => setLeaderboardExpanded((value) => !value)} sx={{ mt: 0.8 }}>
