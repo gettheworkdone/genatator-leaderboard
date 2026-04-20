@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -42,6 +42,111 @@ print(result["stratifier"]["exon"]["transcript_type"]["mRNA"][250])
 
 # Use detailed transcript output returned by Evaluate.
 print(len(result["detailed"]["exon"]), list(result["detailed"]["exon"].keys())[:3])`;
+
+const METRIC_DESCRIPTION_HTML = `
+<section id="metric-description">
+  <p>
+    This metric is built for the situation in which a prediction may look locally accurate and still be biologically wrong.
+    In genome annotation, a small shift at a transcript, exon, or coding boundary can preserve much of the basewise signal
+    while changing splice structure, coding frame, or the translated product. For that reason, the metric does not start from
+    per-nucleotide agreement. Instead, it treats reconstructed transcript objects and their structural parts as the primary
+    units of evaluation.
+  </p>
+
+  <p>
+    The metric is reported in two branches. The <strong>exon branch</strong> asks whether the predicted annotation recovers
+    transcript architecture at the exon level, including both protein-coding and long non-coding transcripts. The
+    <strong>CDS branch</strong> asks whether the predicted annotation recovers the coding structure of mRNA transcripts.
+    This distinction matters biologically: the exon branch rewards recovery of the full transcribed structure, whereas the
+    CDS branch focuses on the part of the transcript that determines the encoded protein.
+  </p>
+
+  <p>
+    Let \(k \ge 0\) be a boundary tolerance measured in base pairs. At a given value of \(k\), the metric first computes an
+    <strong>interval-level</strong> score. In the exon branch, a predicted transcript interval is counted as matched when its
+    boundaries fall within tolerance \(k\) relative to at least one reference transcript interval. In the CDS branch, the same
+    idea is applied to the coding span of the transcript, so the score reflects recovery of coding extent rather than full
+    transcript extent. Let \(TP_{\mathrm{int}}(k)\) be the number of matched predicted transcripts, let
+    \(FP_{\mathrm{int}}(k)\) be the number of predicted transcripts that are not matched, let \(TP_{\mathrm{gene}}(k)\) be the
+    number of reference genes for which at least one transcript is matched, and let \(FN_{\mathrm{gene}}(k)\) be the number
+    of reference genes with no matched transcript. Then
+  </p>
+
+  <div class="equation">
+    \[
+      \mathrm{Precision}(k)=
+      \frac{TP_{\mathrm{int}}(k)}
+      {TP_{\mathrm{int}}(k)+FP_{\mathrm{int}}(k)},
+      \qquad
+      \mathrm{Recall}(k)=
+      \frac{TP_{\mathrm{gene}}(k)}
+      {TP_{\mathrm{gene}}(k)+FN_{\mathrm{gene}}(k)},
+    \]
+    \[
+      F_{1}(k)=
+      \frac{2\,\mathrm{Precision}(k)\,\mathrm{Recall}(k)}
+      {\mathrm{Precision}(k)+\mathrm{Recall}(k)}.
+    \]
+  </div>
+
+  <p>
+    This definition is deliberate. Precision is computed over predicted transcripts because each prediction is a biological
+    claim that may be correct or spurious. Recall is computed over reference genes because the biologically relevant question
+    is whether a gene has been recovered at all, not whether every reference transcript has been counted independently.
+    The score therefore balances overprediction against failure to recover annotated genes.
+  </p>
+
+  <p>
+    The second view is <strong>segmentation-aware evaluation</strong>. Here, interval matching alone is not enough: the
+    prediction must also reconstruct the relevant internal structure. In the exon branch, this means that the exon chain must
+    agree after allowing the chosen tolerance only at the outer transcript boundaries; internal splice structure must still be
+    correct. In the CDS branch, the ordered CDS chain must match exactly. This distinction is biologically necessary because
+    approximate localization and correct structural reconstruction are not the same thing. A model may find the right locus
+    and still recover the wrong mature transcript or the wrong coding organization.
+  </p>
+
+  <p>
+    The metric also reports <strong>multi-isoform recovery</strong> (MI). This quantity is evaluated only for genes that are
+    genuinely multi-isoform in the reference annotation. A gene contributes to MI only when the prediction recovers at least
+    two distinct transcript objects that match at least two distinct annotated isoforms of that same gene. Accordingly,
+    MI without segmentation measures isoform multiplicity after interval matching, whereas MI with segmentation measures
+    isoform multiplicity only after the structural filter described above has also been passed.
+  </p>
+
+  <p>
+    Finally, the metric reports <strong>exact part-level</strong> scores. For a chosen branch \(B\), let
+    \(S_{\mathrm{pred}}^{B}\) be the set of all unique predicted intervals of that branch pooled across transcripts, and let
+    \(S_{\mathrm{true}}^{B}\) be the corresponding set of unique reference intervals. In the exon branch these are exon intervals;
+    in the CDS branch these are CDS intervals. A <em>true positive</em> is a predicted interval in \(S_{\mathrm{pred}}^{B}\)
+    that exactly matches an interval in \(S_{\mathrm{true}}^{B}\). A <em>false positive</em> is a predicted interval with no
+    exact reference match. A <em>false negative</em> is a reference interval that is not recovered by any predicted interval.
+    If \(TP_{\mathrm{part}}^{B}\), \(FP_{\mathrm{part}}^{B}\), and \(FN_{\mathrm{part}}^{B}\) denote these counts, then
+  </p>
+
+  <div class="equation">
+    \[
+      \mathrm{Precision}_{\mathrm{part}}^{B}=
+      \frac{TP_{\mathrm{part}}^{B}}
+      {TP_{\mathrm{part}}^{B}+FP_{\mathrm{part}}^{B}},
+      \qquad
+      \mathrm{Recall}_{\mathrm{part}}^{B}=
+      \frac{TP_{\mathrm{part}}^{B}}
+      {TP_{\mathrm{part}}^{B}+FN_{\mathrm{part}}^{B}},
+    \]
+    \[
+      F_{1,\mathrm{part}}^{B}=
+      \frac{2\,\mathrm{Precision}_{\mathrm{part}}^{B}\,\mathrm{Recall}_{\mathrm{part}}^{B}}
+      {\mathrm{Precision}_{\mathrm{part}}^{B}+\mathrm{Recall}_{\mathrm{part}}^{B}}.
+    \]
+  </div>
+
+  <p>
+    These part-level scores are not a replacement for transcript-level evaluation. Rather, they answer a narrower question:
+    did the model identify the correct exon or CDS pieces, even if it failed to assemble them into the correct full transcript?
+    Taken together, interval-level F1, segmentation-aware F1, multi-isoform recovery, and exact part-level scores provide a
+    mathematically explicit and biologically coherent picture of annotation quality.
+  </p>
+</section>`;
 
 function SectionTitle({ icon = null, title, subtitle = null }) {
   return (
@@ -110,6 +215,12 @@ export default function MetricPage() {
     };
   }, [result, selectedKInput]);
 
+  useEffect(() => {
+    if (window?.MathJax?.typesetPromise) {
+      window.MathJax.typesetPromise();
+    }
+  }, [metricExpanded, result]);
+
   const reset = () => {
     setPredFile(null);
     setTrueFile(null);
@@ -164,88 +275,7 @@ export default function MetricPage() {
                 pr: 0.5,
               }}
             >
-              <Typography color="text.secondary">
-                The purpose of this benchmark is to provide a biologically rigorous evaluation of <strong>ab initio genome annotation</strong>{" "}
-            from ordinary GFF predictions against curated reference annotation. Its central premise is that the quality of an annotation
-            model should not be judged primarily by per-nucleotide agreement, because local label accuracy can remain deceptively high
-            even when the predicted transcript or coding structure is biologically wrong. A one-base shift at an exon or CDS boundary
-            can alter splice structure, disrupt coding frame, or change the translated product, yet such an error may have only a minor
-            effect on basewise scores. For this reason, the metric is organized around transcript reconstruction and gene recovery rather
-            than around isolated nucleotide labels. This design follows the broader argument that interval- and gene-level evaluation is
-            more appropriate than token-level scoring for biologically meaningful assessment of gene annotation systems.
-              </Typography>
-              <Typography color="text.secondary">
-            The benchmark is evaluated in two complementary branches, <strong>exon</strong> and <strong>CDS</strong>, because these reflect
-            distinct biological questions. The exon branch measures recovery of transcript architecture in its broad sense, including
-            protein-coding transcripts and long non-coding RNAs. It is therefore suitable for judging whether a model reconstructs the
-            transcribed structure of genes, not only their coding segments. The CDS branch isolates the protein-coding core and evaluates
-            how accurately a method reconstructs the coding portion of mRNA transcripts. This separation is important because many existing
-            tools are optimized for coding regions and can appear competitive when only CDS structure is considered, while failing to recover
-            untranslated and non-coding components of the annotation. Conversely, a model that is strong on full transcript structure may
-            still differ from coding-focused systems in the strict reconstruction of CDS organization. The two-branch design therefore makes
-            the leaderboard scientifically fairer and more interpretable.
-              </Typography>
-              <Typography color="text.secondary">
-            All scores are computed as a function of a <strong>boundary tolerance parameter</strong> (k), which expresses how far a predicted
-            transcript or coding interval may deviate from the reference and still be considered localized correctly. This is not merely a
-            practical relaxation. In biology, transcript starts and ends are not perfectly noise-free objects, and even high-quality reference
-            annotations treat inherently variable transcriptional processes as exact coordinates. Evaluating performance across a range of
-            tolerances therefore provides a more realistic view of model behavior than fixing a single arbitrary threshold. It distinguishes
-            models that are approximately correct from those that are precisely correct, and it makes visible whether an apparent gain in
-            performance comes from genuine structural accuracy or only from lenient localization. The use of tolerance-dependent curves is
-            also consistent with prior biologically motivated benchmarking of transcript boundary recovery.
-              </Typography>
-              <Typography color="text.secondary">
-            The first primary metric family is <strong>interval-level evaluation</strong>, which measures transcript localization without yet
-            requiring full internal structure to be correct. In this view, a predicted transcript is rewarded when it is matched to a reference
-            transcript within the chosen tolerance (k). Precision is calculated over predicted transcripts, because every additional prediction
-            is a biological claim that can be either supported or unsupported. Recall is calculated at the level of genes, because the biologically
-            meaningful question is whether at least one annotated isoform of a gene has been recovered. The resulting interval-level F1 score
-            therefore balances two distinct but complementary demands: avoiding spurious transcript calls and recovering real genes. In the exon
-            branch, the match reflects transcript interval agreement. In the CDS branch, the rule is deliberately more conservative: a predicted
-            coding interval is credited only when it recovers the true coding core without truncating it, because cutting into CDS is far more
-            damaging biologically than a modest flanking overextension. This makes the CDS branch especially appropriate for judging coding integrity.
-              </Typography>
-              <Typography color="text.secondary">
-            The second primary metric is <strong>MI, multi-isoform recovery</strong>. MI addresses a failure mode that ordinary precision, recall,
-            and F1 do not detect well: a model may recover one plausible transcript per locus and still completely miss isoform diversity. From
-            a biological standpoint, this is a major limitation, because alternative isoforms are often functionally distinct and are part of the
-            reference truth rather than annotation noise. MI therefore counts genes for which the method recovers more than one distinct annotated
-            isoform. Importantly, this score is evaluated only on genes for which the annotation genuinely supports multi-isoform structure, so
-            the metric does not penalize methods for failing to invent complexity where none exists. In this way, MI complements F1: F1 measures
-            general recovery, whereas MI measures whether the method captures transcript heterogeneity.
-              </Typography>
-              <Typography color="text.secondary">
-            Interval-level agreement alone is still insufficient, because a transcript can be localized approximately correctly while its internal
-            exon or coding organization is wrong. For this reason, the benchmark introduces <strong>segmentation-level evaluation</strong>, which
-            asks whether matched predictions also reconstruct the biologically relevant internal structure. In the exon branch, segmentation-level
-            assessment is designed to separate uncertainty in transcript extremities from true splice-structure errors. Once a prediction has been
-            localized within tolerance, it is then required to reproduce the exon organization that defines the mature transcript, especially the
-            splice junction structure that determines exon–intron architecture. This prevents a model from receiving full credit merely because it
-            found the right locus while misplacing internal exons. In the CDS branch, segmentation-level evaluation is even stricter: the full CDS
-            segmentation must be reconstructed exactly. This reflects the fact that coding boundaries are not interchangeable structural hints; they
-            determine the reading frame and thus the encoded protein. A predictor that finds the right gene but shifts a coding segment has not truly
-            recovered the same biological product. Segmentation-level F1 and segmentation-level MI therefore represent the most demanding and
-            biologically faithful summary of annotation quality in this benchmark.
-              </Typography>
-              <Typography color="text.secondary">
-            Alongside these primary transcript-centered measures, the benchmark also reports <strong>part-level metrics</strong> for exons or CDS
-            segments themselves. These scores quantify exact precision, recall, and F1 over unique exonic parts in the exon branch and unique CDS
-            parts in the CDS branch. Their role is diagnostic rather than primary. They answer a different question: does the model identify the
-            correct building blocks, even if it fails to assemble them into the right complete transcript structures? This distinction matters because
-            a method may detect many individual exons or CDS segments correctly while still failing to reconstruct full isoforms. By reporting part-level
-            metrics separately, the benchmark helps distinguish failures of local part detection from failures of transcript assembly. This makes the
-            leaderboard more informative for model development and error analysis.
-              </Typography>
-              <Typography color="text.secondary">
-            A further strength of the metric is that it is not limited to a single global average. The same evaluation can be <strong>stratified by
-            strand, chromosome, and transcript type</strong>, allowing users to inspect whether a model behaves differently on the forward versus reverse
-            strand, on different genomic contexts, or on mRNA versus lncRNA transcripts. Such stratification is biologically important because different
-            transcript classes and genomic settings pose different annotation challenges. In addition, the benchmark includes a <strong>transcript-resolved
-            evidence layer</strong>. For every ground-truth transcript, the interface records which predictions support it, the minimal tolerance at which
-            the support appears, and whether the parent gene contributes to multi-isoform recovery. This transcript-centered perspective makes the benchmark
-            auditable: users can move from leaderboard scores to the exact reference transcripts that were recovered, missed, or only partially supported.
-              </Typography>
+              <Box className="metric-description" dangerouslySetInnerHTML={{ __html: METRIC_DESCRIPTION_HTML }} />
             </Box>
             {!metricExpanded ? (
               <Box
@@ -397,10 +427,7 @@ export default function MetricPage() {
 
           {selectedMetrics ? (
             <Stack spacing={2.2}>
-              <Alert severity="info">
-                Summary cards below show the metric at k = {selectedMetrics.k}. The full computation covers the entire range
-                from 0 to 500.
-              </Alert>
+              <Alert severity="info">Summary cards below show the metric at k = {selectedMetrics.k}.</Alert>
               <Grid container spacing={2}>
                 <Grid item xs={12} lg={6}>
                   <Paper className="nested-panel" sx={{ p: 2.0 }}>
