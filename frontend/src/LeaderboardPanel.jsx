@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Accordion,
   AccordionDetails,
@@ -9,7 +9,7 @@ import {
   Button,
   Chip,
   CircularProgress,
-  Grid,
+  InputAdornment,
   LinearProgress,
   MenuItem,
   Paper,
@@ -25,8 +25,8 @@ import {
   Typography,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import UploadFileIcon from "@mui/icons-material/UploadFile";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
 import SearchIcon from "@mui/icons-material/Search";
 import {
   CartesianGrid,
@@ -52,6 +52,8 @@ const CHART_COLORS = [
   "#ea580c",
 ];
 
+const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
+
 const METRIC_LABELS = {
   interval_f1: "F1 without segmentation",
   interval_precision: "Precision without segmentation",
@@ -74,6 +76,15 @@ const SORT_METRICS = [
   { value: "cds_segmentation_mi", label: "Rank by CDS MI with segmentation" },
 ];
 
+const LEADERBOARD_DESCRIPTION_HTML = `
+  <p>The leaderboard is the comparative layer built on top of the metric described above. Its role is not to display a single ranking number, but to organize the metric outputs so that differences between models remain biologically interpretable. For that reason, the main table reports eight summary values: interval-level F1, interval-level MI, segmentation-level F1, and segmentation-level MI for the <strong>exon</strong> branch, and the same four quantities for the <strong>CDS</strong> branch.</p>
+  <p>The graph panel then shows any selected metric as a function of the tolerance parameter \\(k\\). This presentation is essential, because models that appear similar at one threshold may behave very differently across the full tolerance range. A model that improves only at large \\(k\\) is fundamentally different from a model that is already accurate near exact matching. Therefore, the curve view reveals boundary precision, robustness, and error sensitivity more clearly than a single operating point.</p>
+  <p>Once a specific value of \\(k\\) is selected, the <strong>Full metrics</strong> panel expands the summary into its components: matched and unmatched predictions, recovered and missed genes, MI counts, and exact exon or CDS part-level scores. In this way, a model’s position on the leaderboard can be explained rather than merely stated, since improvements can be traced to precision, recall, structural correctness, or isoform recovery.</p>
+  <p>The <strong>Stratifier</strong> panel presents the same metric outputs after grouping the data by strand, chromosome, or transcript type. As a result, users can determine whether a model is uniformly strong or whether its performance is concentrated in particular biological contexts. This grouped view is especially important when global averages would otherwise conceal systematic weaknesses.</p>
+  <p>The <strong>Detailed information</strong> panel provides transcript-resolved evidence for every ground-truth gene. For each reference transcript, it lists the supporting predictions, the minimum tolerance at which each support appears, and the contribution of the parent gene to multi-isoform recovery. Thus, the leaderboard remains auditable from the highest-level comparison down to individual biological objects.</p>
+  <p>In addition, the leaderboard allows temporary evaluation of user-supplied GFF predictions under the same rules. These temporary entries appear alongside the permanent models during the current session, while permanent inclusion requires adding the prediction to the maintained repository. This keeps model comparison open and reproducible without turning the leaderboard itself into long-term storage for arbitrary uploads.</p>
+`;
+
 function SectionTitle({ icon = null, title, subtitle = null }) {
   return (
     <Stack spacing={0.6}>
@@ -87,17 +98,18 @@ function SectionTitle({ icon = null, title, subtitle = null }) {
 }
 
 function formatScore(value, digits = 3) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
     return "—";
   }
-  if (Number.isInteger(value)) {
-    return `${value}`;
+  if (Number.isInteger(numeric)) {
+    return `${numeric}`;
   }
-  return Number(value).toFixed(digits);
+  return numeric.toFixed(digits);
 }
 
 function formatSegments(segments) {
-  if (!segments || segments.length === 0) {
+  if (!segments?.length) {
     return "—";
   }
   return segments.map(([start, end]) => `[${start}, ${end}]`).join(", ");
@@ -121,7 +133,6 @@ function BranchTabs({ value, onChange }) {
   );
 }
 
-
 function modelValueAtK(overview, model, branch, metricKey, selectedK) {
   if (!overview || !model?.curves?.[branch]?.[metricKey]) {
     return null;
@@ -130,14 +141,19 @@ function modelValueAtK(overview, model, branch, metricKey, selectedK) {
   return model.curves[branch][metricKey][index];
 }
 
-function MetricChip({ label, value, temporary = false }) {
-  return (
-    <Chip
-      size="small"
-      variant={temporary ? "outlined" : "filled"}
-      label={`${label}: ${value ? "✓" : "✗"}`}
-    />
-  );
+function computeColumnHighlights(rows, keys) {
+  const highlights = {};
+  for (const key of keys) {
+    const values = rows.map((row) => Number(row[key])).filter((value) => Number.isFinite(value));
+    if (!values.length) {
+      continue;
+    }
+    if (values.every((value) => value === values[0])) {
+      continue;
+    }
+    highlights[key] = Math.max(...values);
+  }
+  return highlights;
 }
 
 function ReadonlyCellField({ value }) {
@@ -161,131 +177,79 @@ function ReadonlyCellField({ value }) {
 
 export default function LeaderboardPanel() {
   const uniformFieldSx = { "& .MuiInputBase-root": { height: 56 } };
+
   const [status, setStatus] = useState(null);
   const [overview, setOverview] = useState(null);
   const [selectedKInput, setSelectedKInput] = useState("250");
   const [sortMetric, setSortMetric] = useState("exon_segmentation_f1");
+
   const [graphBranch, setGraphBranch] = useState("exon");
   const [graphMetric, setGraphMetric] = useState("segmentation_f1");
   const [selectedModels, setSelectedModels] = useState([]);
+
   const [fullBranch, setFullBranch] = useState("exon");
   const [fullMetrics, setFullMetrics] = useState(null);
+
   const [stratBranch, setStratBranch] = useState("exon");
   const [stratModel, setStratModel] = useState("");
   const [stratRule, setStratRule] = useState("transcript_type");
   const [stratifier, setStratifier] = useState(null);
+
   const [detailBranch, setDetailBranch] = useState("exon");
   const [geneQuery, setGeneQuery] = useState("");
   const [genePage, setGenePage] = useState(1);
   const [geneList, setGeneList] = useState({ items: [], total: 0, page: 1, page_size: 25 });
   const [geneDetails, setGeneDetails] = useState({});
   const [expandedGene, setExpandedGene] = useState(false);
-  const [uploadModelName, setUploadModelName] = useState("");
+
   const [uploadFile, setUploadFile] = useState(null);
+  const [uploadModelName, setUploadModelName] = useState("");
   const [uploadMessage, setUploadMessage] = useState("");
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [temporaryPreview, setTemporaryPreview] = useState(null);
+
   const [leaderboardExpanded, setLeaderboardExpanded] = useState(false);
   const uploadInputRef = useRef(null);
+
   const selectedK = useMemo(() => {
     const parsed = Number(selectedKInput);
-    if (!Number.isFinite(parsed)) return 0;
+    if (!Number.isFinite(parsed)) {
+      return 0;
+    }
     return Math.max(0, Math.min(parsed, 500));
   }, [selectedKInput]);
 
-  const fetchStatus = async () => {
-    const response = await fetch("/api/leaderboard/status");
-    const payload = await response.json();
-    setStatus(payload);
-  };
+  const modelsCombined = useMemo(() => {
+    const base = overview?.models || [];
+    return temporaryPreview?.model ? [...base, temporaryPreview.model] : base;
+  }, [overview, temporaryPreview]);
 
-  const fetchOverview = async () => {
-    const response = await fetch("/api/leaderboard/overview");
-    const payload = await response.json();
-    setOverview(payload);
-  };
-
-  useEffect(() => {
-    fetchStatus();
-    fetchOverview();
-    const id = window.setInterval(() => {
-      fetchStatus();
-      fetchOverview();
-    }, status?.running || status?.upload_current ? 1000 : 5000);
-    return () => window.clearInterval(id);
-  }, [status?.running, status?.upload_current]);
-
-  useEffect(() => {
-    if (!overview) {
-      return;
+  const chartModels = useMemo(() => {
+    if (!selectedModels.length) {
+      return modelsCombined;
     }
-    setSelectedKInput((current) => (current === "" ? "" : current || `${overview.default_k ?? 250}`));
-    if (overview.models?.length > 0) {
-      setSelectedModels((current) => {
-        const allIds = overview.models.map((item) => item.model_id);
-        if (!current.length) {
-          return allIds;
-        }
-        const missing = allIds.filter((item) => !current.includes(item));
-        return missing.length ? [...current, ...missing] : current;
-      });
-    }
-    if (!stratModel && overview.models?.length > 0) {
-      setStratModel(overview.models[0].model_id);
-    }
-  }, [overview, stratModel]);
+    return modelsCombined.filter((item) => selectedModels.includes(item.model_id));
+  }, [modelsCombined, selectedModels]);
 
-  useEffect(() => {
-    if (!overview || !overview.models?.length) {
-      setFullMetrics(null);
-      return;
-    }
-    const params = new URLSearchParams({
-      branch: fullBranch,
-      k: `${selectedK}`,
-    });
-    if (selectedModels.length > 0) {
-      params.set("model_ids", selectedModels.join(","));
-    }
-    fetch(`/api/leaderboard/full-metrics?${params.toString()}`)
-      .then((response) => response.json())
-      .then((payload) => setFullMetrics(payload))
-      .catch(() => setFullMetrics(null));
-  }, [overview, fullBranch, selectedK, selectedModels]);
-
-  useEffect(() => {
-    if (!stratModel) {
-      setStratifier(null);
-      return;
-    }
-    const params = new URLSearchParams({
-      model_id: stratModel,
-      branch: stratBranch,
-      rule: stratRule,
-      k: `${selectedK}`,
-    });
-    fetch(`/api/leaderboard/stratifier?${params.toString()}`)
-      .then((response) => response.json())
-      .then((payload) => setStratifier(payload))
-      .catch(() => setStratifier(null));
-  }, [stratModel, stratBranch, stratRule, selectedK]);
-
-  useEffect(() => {
-    const params = new URLSearchParams({
-      branch: detailBranch,
-      query: geneQuery,
-      page: `${genePage}`,
-      page_size: "25",
-    });
-    fetch(`/api/leaderboard/genes?${params.toString()}`)
-      .then((response) => response.json())
-      .then((payload) => setGeneList(payload))
-      .catch(() => setGeneList({ items: [], total: 0, page: 1, page_size: 25 }));
-  }, [detailBranch, geneQuery, genePage]);
-
-  const mainRows = useMemo(() => {
-    if (!overview?.models) {
+  const chartData = useMemo(() => {
+    if (!overview?.k_values?.length) {
       return [];
     }
-    const rows = overview.models.map((model) => ({
+    return overview.k_values.map((kValue, index) => {
+      const row = { k: kValue };
+      chartModels.forEach((model) => {
+        row[model.model_id] = model?.curves?.[graphBranch]?.[graphMetric]?.[index] ?? null;
+      });
+      return row;
+    });
+  }, [overview, chartModels, graphBranch, graphMetric]);
+
+  const mainRows = useMemo(() => {
+    if (!modelsCombined.length) {
+      return [];
+    }
+
+    const rows = modelsCombined.map((model) => ({
       model_id: model.model_id,
       display_name: model.display_name,
       temporary: model.temporary,
@@ -298,96 +262,355 @@ export default function LeaderboardPanel() {
       cds_segmentation_f1: modelValueAtK(overview, model, "cds", "segmentation_f1", selectedK),
       cds_segmentation_mi: modelValueAtK(overview, model, "cds", "segmentation_mi", selectedK),
     }));
+
     rows.sort((a, b) => {
-      const av = Number(a[sortMetric] ?? -Infinity);
-      const bv = Number(b[sortMetric] ?? -Infinity);
-      if (bv !== av) return bv - av;
+      const aValue = Number(a[sortMetric] ?? -Infinity);
+      const bValue = Number(b[sortMetric] ?? -Infinity);
+      if (bValue !== aValue) {
+        return bValue - aValue;
+      }
       return a.display_name.localeCompare(b.display_name);
     });
+
     return rows;
-  }, [overview, selectedK, sortMetric]);
+  }, [modelsCombined, overview, selectedK, sortMetric]);
 
-  const chartModels = useMemo(() => {
-    if (!overview?.models) {
-      return [];
-    }
-    if (!selectedModels.length) {
-      return overview.models;
-    }
-    return overview.models.filter((item) => selectedModels.includes(item.model_id));
-  }, [overview, selectedModels]);
+  const mainColumnHighlights = useMemo(
+    () =>
+      computeColumnHighlights(mainRows, [
+        "exon_interval_f1",
+        "exon_interval_mi",
+        "exon_segmentation_f1",
+        "exon_segmentation_mi",
+        "cds_interval_f1",
+        "cds_interval_mi",
+        "cds_segmentation_f1",
+        "cds_segmentation_mi",
+      ]),
+    [mainRows],
+  );
 
-  const chartData = useMemo(() => {
-    if (!overview?.k_values || !chartModels.length) {
-      return [];
+  const fullColumnHighlights = useMemo(
+    () =>
+      computeColumnHighlights(fullMetrics?.rows || [], [
+        "interval_precision",
+        "interval_recall",
+        "interval_f1",
+        "interval_mi",
+        "segmentation_precision",
+        "segmentation_recall",
+        "segmentation_f1",
+        "segmentation_mi",
+        "part_precision",
+        "part_recall",
+        "part_f1",
+      ]),
+    [fullMetrics],
+  );
+
+  const totalGenePages = useMemo(() => {
+    const total = Number(geneList?.total) || 0;
+    const pageSize = Number(geneList?.page_size) || 25;
+    return Math.max(1, Math.ceil(total / pageSize));
+  }, [geneList]);
+
+  const fetchStatus = async () => {
+    try {
+      const response = await fetch("/api/leaderboard/status");
+      const payload = await response.json();
+      setStatus(payload);
+    } catch {
+      setStatus({ error: "Failed to load leaderboard status." });
     }
-    return overview.k_values.map((k, idx) => {
-      const row = { k };
-      for (const model of chartModels) {
-        row[model.model_id] = model.curves?.[graphBranch]?.[graphMetric]?.[idx] ?? null;
-      }
-      return row;
+  };
+
+  const fetchOverview = async () => {
+    try {
+      const response = await fetch("/api/leaderboard/overview");
+      const payload = await response.json();
+      setOverview(payload);
+    } catch {
+      setOverview(null);
+    }
+  };
+
+  const reloadLeaderboard = async () => {
+    await Promise.all([fetchStatus(), fetchOverview()]);
+  };
+
+  useEffect(() => {
+    reloadLeaderboard();
+  }, []);
+
+  useEffect(() => {
+    if (!status?.running && !status?.upload_current) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      reloadLeaderboard();
+    }, 4000);
+    return () => window.clearInterval(intervalId);
+  }, [status?.running, status?.upload_current]);
+
+  useEffect(() => {
+    if (window?.MathJax?.typesetPromise) {
+      window.MathJax.typesetPromise();
+    }
+  }, [leaderboardExpanded, overview]);
+
+  useEffect(() => {
+    if (!overview) {
+      return;
+    }
+
+    setSelectedKInput((current) => (current === "" ? "" : current || `${overview.default_k ?? 250}`));
+
+    if (modelsCombined.length > 0) {
+      setSelectedModels((current) => {
+        const allIds = modelsCombined.map((item) => item.model_id);
+        if (!current.length) {
+          return allIds;
+        }
+        const filtered = current.filter((item) => allIds.includes(item));
+        const missing = allIds.filter((item) => !filtered.includes(item));
+        return missing.length ? [...filtered, ...missing] : filtered;
+      });
+    }
+
+    if ((!stratModel || !modelsCombined.some((item) => item.model_id === stratModel)) && modelsCombined.length > 0) {
+      setStratModel(modelsCombined[0].model_id);
+    }
+  }, [overview, stratModel, modelsCombined]);
+
+  useEffect(() => {
+    if (!overview || !modelsCombined.length) {
+      setFullMetrics(null);
+      return;
+    }
+
+    const temporaryModelId = temporaryPreview?.model?.model_id;
+    const fullMetricsModelIds = selectedModels.filter((item) => item !== temporaryModelId);
+    const params = new URLSearchParams({
+      branch: fullBranch,
+      k: `${selectedK}`,
     });
-  }, [overview, chartModels, graphBranch, graphMetric]);
 
-  const fetchGeneDetail = async (geneId) => {
+    if (fullMetricsModelIds.length > 0) {
+      params.set("model_ids", fullMetricsModelIds.join(","));
+    }
+
+    fetch(`/api/leaderboard/full-metrics?${params.toString()}`)
+      .then((response) => response.json())
+      .then((payload) => {
+        const rows = [...(payload.rows || [])];
+        if (temporaryPreview && selectedModels.includes(temporaryModelId)) {
+          const localRow = temporaryPreview.full_metrics?.[fullBranch]?.[selectedK];
+          if (localRow) {
+            rows.push(localRow);
+          }
+        }
+        setFullMetrics({ ...payload, rows });
+      })
+      .catch(() => setFullMetrics(null));
+  }, [overview, modelsCombined, fullBranch, selectedK, selectedModels, temporaryPreview]);
+
+  useEffect(() => {
+    if (!stratModel) {
+      setStratifier(null);
+      return;
+    }
+
+    if (temporaryPreview && stratModel === temporaryPreview.model.model_id) {
+      const rows = Object.entries(temporaryPreview.stratifier?.[stratBranch]?.[stratRule] || {})
+        .map(([groupName, perK]) => {
+          const metrics = perK[selectedK];
+          if (!metrics) {
+            return null;
+          }
+          return {
+            group: groupName,
+            interval_precision: metrics["interval-level"]["precision"],
+            interval_recall: metrics["interval-level"]["recall"],
+            interval_f1: metrics["interval-level"]["f1"],
+            interval_mi: metrics["interval-level"]["mi"],
+            segmentation_precision: metrics["segmentation-level"]["precision"],
+            segmentation_recall: metrics["segmentation-level"]["recall"],
+            segmentation_f1: metrics["segmentation-level"]["f1"],
+            segmentation_mi: metrics["segmentation-level"]["mi"],
+            part_precision: metrics["part-level"]["precision"],
+            part_recall: metrics["part-level"]["recall"],
+            part_f1: metrics["part-level"]["f1"],
+          };
+        })
+        .filter(Boolean);
+
+      rows.sort((a, b) => Number(b.segmentation_f1) - Number(a.segmentation_f1));
+      setStratifier({ rows });
+      return;
+    }
+
+    const params = new URLSearchParams({
+      model_id: stratModel,
+      branch: stratBranch,
+      rule: stratRule,
+      k: `${selectedK}`,
+    });
+
+    fetch(`/api/leaderboard/stratifier?${params.toString()}`)
+      .then((response) => response.json())
+      .then((payload) => setStratifier(payload))
+      .catch(() => setStratifier(null));
+  }, [stratModel, stratBranch, stratRule, selectedK, temporaryPreview]);
+
+  useEffect(() => {
+    const params = new URLSearchParams({
+      branch: detailBranch,
+      query: geneQuery,
+      page: `${genePage}`,
+      page_size: "25",
+    });
+
+    fetch(`/api/leaderboard/genes?${params.toString()}`)
+      .then((response) => response.json())
+      .then((payload) => setGeneList(payload))
+      .catch(() => setGeneList({ items: [], total: 0, page: 1, page_size: 25 }));
+  }, [detailBranch, geneQuery, genePage]);
+
+  const fetchGeneDetail = useCallback(async (geneId) => {
     const cacheKey = `${detailBranch}|${geneId}|${selectedK}|${selectedModels.join(",")}`;
     if (geneDetails[cacheKey]) {
       return;
     }
+
+    const temporaryModelId = temporaryPreview?.model?.model_id;
+    const geneDetailModelIds = selectedModels.filter((item) => item !== temporaryModelId);
     const params = new URLSearchParams({
       branch: detailBranch,
       k: `${selectedK}`,
     });
-    if (selectedModels.length > 0) {
-      params.set("model_ids", selectedModels.join(","));
+
+    if (geneDetailModelIds.length > 0) {
+      params.set("model_ids", geneDetailModelIds.join(","));
     }
+
     const response = await fetch(`/api/leaderboard/gene/${encodeURIComponent(geneId)}?${params.toString()}`);
     const payload = await response.json();
+
+    if (temporaryPreview && selectedModels.includes(temporaryModelId)) {
+      payload.gene.transcripts = payload.gene.transcripts.map((transcript) => {
+        const local = temporaryPreview.detailed?.[detailBranch]?.[transcript.transcript_id];
+        if (!local) {
+          return transcript;
+        }
+
+        const intervalMap = Object.fromEntries(
+          (local["interval-level"]?.predictions || [])
+            .filter((item) => item.min_k !== null && item.min_k !== undefined)
+            .map((item) => [item.pred_id, Number(item.min_k)]),
+        );
+
+        const segmentationMap = Object.fromEntries(
+          (local["segmentation-level"]?.predictions || [])
+            .filter((item) => item.min_k !== null && item.min_k !== undefined)
+            .map((item) => [item.pred_id, Number(item.min_k)]),
+        );
+
+        const extras = [...new Set([...Object.keys(intervalMap), ...Object.keys(segmentationMap)])].map((predId) => {
+          const predMeta = temporaryPreview.prediction_index?.[predId] || {};
+          const candidates = [intervalMap[predId], segmentationMap[predId]].filter((value) => Number.isFinite(value));
+          const minK = candidates.length ? Math.min(...candidates) : null;
+          return {
+            model_id: temporaryModelId,
+            model_name: temporaryPreview.model.display_name,
+            temporary: true,
+            pred_id: predId,
+            chromosome: predMeta.chromosome,
+            start: predMeta.start,
+            end: predMeta.end,
+            strand: predMeta.strand,
+            exon_segments: predMeta.exon_segments || [],
+            cds_segments: predMeta.cds_segments || [],
+            min_k: minK,
+            matched_at_k: minK !== null && minK <= selectedK,
+          };
+        });
+
+        return {
+          ...transcript,
+          matched_predictions: [...transcript.matched_predictions, ...extras],
+          matched_prediction_count: transcript.matched_predictions.length + extras.length,
+        };
+      });
+    }
+
     setGeneDetails((current) => ({ ...current, [cacheKey]: payload }));
-  };
+  }, [detailBranch, geneDetails, selectedK, selectedModels, temporaryPreview]);
 
-  const reloadLeaderboard = async () => {
-    await fetch("/api/leaderboard/reload", { method: "POST" });
-    fetchStatus();
-    fetchOverview();
-  };
+  useEffect(() => {
+    if (!geneList.items?.length || !selectedModels.length) {
+      return;
+    }
+    geneList.items.forEach((gene) => {
+      fetchGeneDetail(gene.gene_id);
+    });
+  }, [geneList.items, fetchGeneDetail, selectedModels.length]);
 
-  const submitUpload = async () => {
+  const submitPreview = async () => {
     setUploadMessage("");
+
     if (!uploadFile) {
       setUploadMessage("Please choose a prediction GFF file.");
       return;
     }
-    const pred_gff_text = await uploadFile.text();
-    const response = await fetch("/api/leaderboard/upload", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model_name: uploadModelName,
-        pred_gff_text,
-      }),
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      setUploadMessage(payload.detail || "Upload failed.");
-      return;
-    }
-    setUploadMessage(payload.message || "Temporary model submitted.");
-    setUploadModelName("");
-    setUploadFile(null);
-    if (uploadInputRef.current) {
-      uploadInputRef.current.value = "";
+
+    setUploadLoading(true);
+    try {
+      const predGffText = await uploadFile.text();
+      const baseName = uploadFile.name.replace(/\.[^.]+$/, "") || "Temporary preview";
+      const modelName = uploadModelName.trim() || baseName;
+
+      const response = await fetch("/api/leaderboard/temporary-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model_name: modelName,
+          pred_gff_text: predGffText,
+        }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        setUploadMessage(payload.detail || "Upload failed.");
+        return;
+      }
+
+      setTemporaryPreview(payload);
+      setUploadMessage(
+        "Temporary preview computed. It is visible only in this session and disappears after page refresh.",
+      );
+      setGeneDetails({});
+      setUploadFile(null);
+      setUploadModelName("");
+
+      if (uploadInputRef.current) {
+        uploadInputRef.current.value = "";
+      }
+    } catch (error) {
+      setUploadMessage(error?.message || "Upload failed.");
+    } finally {
+      setUploadLoading(false);
     }
   };
 
-  const showProgress = status?.running || status?.upload_current;
+  const showProgress = Boolean(status?.running || status?.upload_current);
+
   const progressValue = useMemo(() => {
     if (!status?.total_models) {
       return 0;
     }
     return Math.round(((status.completed_models || 0) / status.total_models) * 100);
   }, [status]);
+
   const progressPreviewValue = useMemo(() => {
     if (!status?.total_models) {
       return 0;
@@ -407,11 +630,12 @@ export default function LeaderboardPanel() {
   return (
     <Stack spacing={3.2}>
       <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 } }}>
-        <Stack spacing={2.0}>
+        <Stack spacing={2}>
           <SectionTitle
             title="Leaderboard description"
             subtitle="Scientifically interpretable comparison of ab initio annotation models."
           />
+
           <Box sx={{ position: "relative" }}>
             <Box
               sx={{
@@ -420,48 +644,9 @@ export default function LeaderboardPanel() {
                 pr: 0.5,
               }}
             >
-              <Typography color="text.secondary">
-            The leaderboard is designed not as a popularity table, but as a <strong>scientifically interpretable comparison framework</strong>.
-            Its main panel reports eight primary summary scores: interval-level F1, interval-level MI, segmentation-level F1, and
-            segmentation-level MI for the exon branch, and the same four metrics for the CDS branch. Together, these scores distinguish
-            four different aspects of performance: broad transcript recovery, recovery of isoform diversity, biologically correct internal
-            reconstruction, and coding-structure fidelity. This prevents a model from appearing strong on the basis of a single favorable
-            metric while failing in another biologically essential dimension.
-              </Typography>
-              <Typography color="text.secondary">
-            The leaderboard does not rely on a single operating point alone. Instead, it visualizes each selected metric as a{" "}
-            <strong>continuous function of the tolerance parameter (k)</strong>. This presentation is scientifically important, because
-            it exposes how rapidly model quality changes as one moves from exact matching toward more permissive matching. A model whose
-            curve rises only under large tolerances is fundamentally different from a model that performs well near exact matching, even
-            if both happen to share a similar score at one chosen value of (k). The curve view therefore captures robustness, boundary
-            precision, and error sensitivity in a way that a single scalar cannot.
-              </Typography>
-              <Typography color="text.secondary">
-            Once a specific tolerance is selected, the leaderboard expands into a <strong>full metrics view</strong>, where the aggregate
-            scores are decomposed into their biological components: matched and unmatched predictions, recovered and missed genes, part-level
-            exact scores, and multi-isoform counts. This makes the comparison transparent. Users can see whether a model achieves a favorable
-            F1 by high precision, by high recall, or by a particular balance between the two. They can also determine whether performance
-            differences arise from transcript localization, from segmentation fidelity, or from isoform recovery. In this sense, the leaderboard
-            is intended not merely to rank models, but to explain ranking.
-              </Typography>
-              <Typography color="text.secondary">
-            The stratified and transcript-resolved sections extend this philosophy further. A model may rank well overall while failing
-            systematically on lncRNAs, on one strand, or on particular chromosomes. Likewise, an aggregate metric may hide whether errors
-            are concentrated in a small subset of difficult genes or are distributed broadly across the annotation. By placing gene- and
-            transcript-level evidence directly under the global comparison, the leaderboard preserves scientific traceability from summary
-            score to underlying annotation event. This is especially important for genome annotation, where the central question is not only
-            which model scores highest, but <strong>what kinds of biological structures each model can and cannot recover</strong>.
-              </Typography>
-              <Typography color="text.secondary">
-            In summary, the metric and leaderboard are built around a single principle: <strong>biological validity should take precedence
-            over superficial agreement</strong>. The exon branch evaluates transcript reconstruction across coding and non-coding genes.
-            The CDS branch focuses on preservation of coding structure. Interval-level scores measure localization, segmentation-level
-            scores measure structural correctness, MI measures isoform recovery, part-level metrics diagnose local element detection, and
-            stratified plus transcript-resolved views expose where and why models succeed or fail. Taken together, this framework provides
-            a more faithful assessment of ab initio annotation quality than conventional per-base evaluation and is intended to serve as a
-            rigorous benchmark for the next generation of genome annotation models.
-              </Typography>
+              <Box className="metric-description" dangerouslySetInnerHTML={{ __html: LEADERBOARD_DESCRIPTION_HTML }} />
             </Box>
+
             {!leaderboardExpanded ? (
               <Box
                 sx={{
@@ -475,24 +660,33 @@ export default function LeaderboardPanel() {
                 }}
               />
             ) : null}
+
             <Button variant="text" onClick={() => setLeaderboardExpanded((value) => !value)} sx={{ mt: 0.8 }}>
               {leaderboardExpanded ? "Show less" : "Show more"}
             </Button>
           </Box>
+
           {showProgress ? (
             <Stack spacing={1.1}>
               <LinearProgress
                 variant={status?.total_models ? "determinate" : "indeterminate"}
                 value={progressPreviewValue}
               />
-              <Typography color="text.secondary">
-                {status?.message || "Loading leaderboard…"}
-              </Typography>
+              <Typography color="text.secondary">{status?.message || "Loading leaderboard…"}</Typography>
             </Stack>
           ) : null}
+
           {status?.error ? <Alert severity="error">{status.error}</Alert> : null}
+
           {status?.missing_ground_truth ? (
-            <Alert severity="warning" action={<Button onClick={reloadLeaderboard} startIcon={<RefreshIcon />}>Reload</Button>}>
+            <Alert
+              severity="warning"
+              action={
+                <Button onClick={reloadLeaderboard} startIcon={<RefreshIcon />}>
+                  Reload
+                </Button>
+              }
+            >
               {status.message}
             </Alert>
           ) : null}
@@ -500,45 +694,69 @@ export default function LeaderboardPanel() {
       </Paper>
 
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
-          <Stack spacing={1.8}>
-            <SectionTitle
-              title="Temporary custom submission"
-              subtitle="Upload a prediction GFF and a model name to embed a temporary result across all leaderboard panels."
+        <Stack spacing={1.8}>
+          <SectionTitle
+            title="Temporary submission"
+            subtitle="Upload a prediction GFF and compute a temporary preview for this browser session only."
+          />
+
+          <Typography color="text.secondary">
+            Temporary submissions are computed on demand and shown only on this page for the current session. They are
+            not written to persistent Space storage and are removed after refresh. For permanent inclusion, open a pull
+            request to the permanent repository.
+          </Typography>
+
+          <TextField
+            label="Model name"
+            value={uploadModelName}
+            onChange={(event) => setUploadModelName(event.target.value)}
+            placeholder="My model"
+            sx={uniformFieldSx}
+          />
+
+          <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
+            {uploadFile ? uploadFile.name : "Choose prediction GFF"}
+            <input
+              ref={uploadInputRef}
+              hidden
+              type="file"
+              accept=".gff,.gff3,.gtf,.txt"
+              onChange={(event) => {
+                const nextFile = event.target.files?.[0] || null;
+                setUploadFile(nextFile);
+                if (nextFile && !uploadModelName.trim()) {
+                  const baseName = nextFile.name.replace(/\.[^.]+$/, "");
+                  setUploadModelName(baseName);
+                }
+              }}
             />
-            <Typography color="text.secondary">
-              Temporary submissions are processed in memory only. They are not written to persistent Space storage and disappear
-              after restart. To consolidate a model permanently on the public leaderboard, open a pull request to the repository used
-              for bundled prediction files.
-            </Typography>
-            <TextField
-              label="Model name"
-              value={uploadModelName}
-              onChange={(event) => setUploadModelName(event.target.value)}
-              fullWidth
-            />
-            <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
-              {uploadFile ? uploadFile.name : "Choose prediction GFF"}
-              <input
-                ref={uploadInputRef}
-                hidden
-                type="file"
-                accept=".gff,.gff3,.gtf,.txt"
-                onChange={(event) => setUploadFile(event.target.files?.[0] || null)}
-              />
-            </Button>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.1}>
-              <Button variant="contained" onClick={submitUpload}>Submit temporary model</Button>
-              <Button variant="outlined" onClick={reloadLeaderboard} startIcon={<RefreshIcon />}>Reload bundled models</Button>
-            </Stack>
-            {uploadMessage ? <Alert severity="info">{uploadMessage}</Alert> : null}
-            <Alert severity="info">
-              Permanent repository: <span className="mono">{overview?.source_repository_url || "https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git"}</span>
-            </Alert>
-          </Stack>
+          </Button>
+
+          <Button variant="contained" onClick={submitPreview} disabled={uploadLoading}>
+            Submit
+          </Button>
+
+          {uploadLoading ? (
+            <Box className="score-calc-animation">
+              <span className="orb" />
+              <Typography color="text.secondary">Calculating score trajectories and transcript evidence…</Typography>
+            </Box>
+          ) : null}
+
+          {uploadMessage ? <Alert severity="info">{uploadMessage}</Alert> : null}
+
+          <Alert severity="info">
+            Permanent repository:{" "}
+            <span className="mono">
+              {overview?.source_repository_url ||
+                "https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git"}
+            </span>
+          </Alert>
+        </Stack>
       </Paper>
 
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
-        <Stack spacing={2.0}>
+        <Stack spacing={2}>
           <Stack
             direction={{ xs: "column", lg: "row" }}
             spacing={1.2}
@@ -549,6 +767,7 @@ export default function LeaderboardPanel() {
               title="Main metrics"
               subtitle="The table is evaluated at a user-selected tolerance k and shows both exon and CDS branches simultaneously."
             />
+
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
               <TextField
                 label="Active k"
@@ -556,7 +775,9 @@ export default function LeaderboardPanel() {
                 value={selectedKInput}
                 onChange={(event) => setSelectedKInput(event.target.value)}
                 onBlur={() => {
-                  if (selectedKInput === "") return;
+                  if (selectedKInput === "") {
+                    return;
+                  }
                   const parsed = Number(selectedKInput);
                   if (!Number.isFinite(parsed)) {
                     setSelectedKInput("0");
@@ -567,6 +788,7 @@ export default function LeaderboardPanel() {
                 inputProps={{ min: 0, max: 500 }}
                 sx={{ width: 120, ...uniformFieldSx }}
               />
+
               <TextField
                 select
                 label="Sort rows"
@@ -575,13 +797,15 @@ export default function LeaderboardPanel() {
                 sx={{ minWidth: 320, ...uniformFieldSx }}
               >
                 {SORT_METRICS.map((item) => (
-                  <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
+                  <MenuItem key={item.value} value={item.value}>
+                    {item.label}
+                  </MenuItem>
                 ))}
               </TextField>
             </Stack>
           </Stack>
 
-          {!overview?.models?.length ? (
+          {!modelsCombined.length ? (
             <Alert severity="info">No leaderboard models are available yet.</Alert>
           ) : (
             <Box className="result-table-wrap">
@@ -590,17 +814,21 @@ export default function LeaderboardPanel() {
                   <TableRow>
                     <TableCell rowSpan={2}>Rank</TableCell>
                     <TableCell rowSpan={2}>Model</TableCell>
-                    <TableCell colSpan={4} align="center">Exon</TableCell>
-                    <TableCell colSpan={4} align="center">CDS</TableCell>
+                    <TableCell colSpan={4} align="center">
+                      Exon
+                    </TableCell>
+                    <TableCell colSpan={4} align="center">
+                      CDS
+                    </TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell>F1 w/o seg.</TableCell>
                     <TableCell>MI w/o seg.</TableCell>
-                    <TableCell>F1 with seg.</TableCell>
+                    <TableCell className="rank-column-highlight">F1 with seg.</TableCell>
                     <TableCell>MI with seg.</TableCell>
                     <TableCell>F1 w/o seg.</TableCell>
                     <TableCell>MI w/o seg.</TableCell>
-                    <TableCell>F1 with seg.</TableCell>
+                    <TableCell className="rank-column-highlight">F1 with seg.</TableCell>
                     <TableCell>MI with seg.</TableCell>
                   </TableRow>
                 </TableHead>
@@ -614,14 +842,88 @@ export default function LeaderboardPanel() {
                           {row.temporary ? <Chip size="small" variant="outlined" label="temporary" /> : null}
                         </Stack>
                       </TableCell>
-                      <TableCell>{formatScore(row.exon_interval_f1)}</TableCell>
-                      <TableCell>{formatScore(row.exon_interval_mi, 0)}</TableCell>
-                      <TableCell>{formatScore(row.exon_segmentation_f1)}</TableCell>
-                      <TableCell>{formatScore(row.exon_segmentation_mi, 0)}</TableCell>
-                      <TableCell>{formatScore(row.cds_interval_f1)}</TableCell>
-                      <TableCell>{formatScore(row.cds_interval_mi, 0)}</TableCell>
-                      <TableCell>{formatScore(row.cds_segmentation_f1)}</TableCell>
-                      <TableCell>{formatScore(row.cds_segmentation_mi, 0)}</TableCell>
+                      <TableCell
+                        sx={
+                          mainColumnHighlights.exon_interval_f1 !== undefined &&
+                          Number(row.exon_interval_f1) === mainColumnHighlights.exon_interval_f1
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.exon_interval_f1)}
+                      </TableCell>
+                      <TableCell
+                        sx={
+                          mainColumnHighlights.exon_interval_mi !== undefined &&
+                          Number(row.exon_interval_mi) === mainColumnHighlights.exon_interval_mi
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.exon_interval_mi, 0)}
+                      </TableCell>
+                      <TableCell
+                        className="rank-column-highlight"
+                        sx={
+                          mainColumnHighlights.exon_segmentation_f1 !== undefined &&
+                          Number(row.exon_segmentation_f1) === mainColumnHighlights.exon_segmentation_f1
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.exon_segmentation_f1)}
+                      </TableCell>
+                      <TableCell
+                        sx={
+                          mainColumnHighlights.exon_segmentation_mi !== undefined &&
+                          Number(row.exon_segmentation_mi) === mainColumnHighlights.exon_segmentation_mi
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.exon_segmentation_mi, 0)}
+                      </TableCell>
+                      <TableCell
+                        sx={
+                          mainColumnHighlights.cds_interval_f1 !== undefined &&
+                          Number(row.cds_interval_f1) === mainColumnHighlights.cds_interval_f1
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.cds_interval_f1)}
+                      </TableCell>
+                      <TableCell
+                        sx={
+                          mainColumnHighlights.cds_interval_mi !== undefined &&
+                          Number(row.cds_interval_mi) === mainColumnHighlights.cds_interval_mi
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.cds_interval_mi, 0)}
+                      </TableCell>
+                      <TableCell
+                        className="rank-column-highlight"
+                        sx={
+                          mainColumnHighlights.cds_segmentation_f1 !== undefined &&
+                          Number(row.cds_segmentation_f1) === mainColumnHighlights.cds_segmentation_f1
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.cds_segmentation_f1)}
+                      </TableCell>
+                      <TableCell
+                        sx={
+                          mainColumnHighlights.cds_segmentation_mi !== undefined &&
+                          Number(row.cds_segmentation_mi) === mainColumnHighlights.cds_segmentation_mi
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.cds_segmentation_mi, 0)}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -632,7 +934,7 @@ export default function LeaderboardPanel() {
       </Paper>
 
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
-        <Stack spacing={2.0}>
+        <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
               title="Metric curves"
@@ -648,7 +950,9 @@ export default function LeaderboardPanel() {
                 sx={{ minWidth: 240 }}
               >
                 {Object.entries(METRIC_LABELS).map(([value, label]) => (
-                  <MenuItem key={value} value={value}>{label}</MenuItem>
+                  <MenuItem key={value} value={value}>
+                    {label}
+                  </MenuItem>
                 ))}
               </TextField>
             </Stack>
@@ -656,10 +960,11 @@ export default function LeaderboardPanel() {
 
           <Autocomplete
             multiple
-            options={overview?.models || []}
-            value={(overview?.models || []).filter((item) => selectedModels.includes(item.model_id))}
+            options={modelsCombined}
+            value={modelsCombined.filter((item) => selectedModels.includes(item.model_id))}
             disableCloseOnSelect
             getOptionLabel={(option) => option.display_name}
+            isOptionEqualToValue={(option, value) => option.model_id === value.model_id}
             onChange={(_, value) => setSelectedModels(value.map((item) => item.model_id))}
             renderInput={(params) => <TextField {...params} label="Models shown on the graph" />}
           />
@@ -670,16 +975,19 @@ export default function LeaderboardPanel() {
                 data={chartData}
                 margin={{ top: 10, right: 24, bottom: 10, left: 8 }}
                 onClick={(event) => {
-                  if (event && event.activeLabel !== undefined && event.activeLabel !== null) {
+                  if (event?.activeLabel !== undefined && event?.activeLabel !== null) {
                     setSelectedKInput(`${Number(event.activeLabel)}`);
                   }
                 }}
               >
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="k" type="number" domain={[0, 500]} allowDecimals={false} />
+                <XAxis dataKey="k" type="number" domain={[0, 500]} allowDecimals={false} ticks={CHART_AXIS_TICKS} />
                 <YAxis />
                 <Tooltip />
                 <Legend />
+                {CHART_AXIS_TICKS.map((tick) => (
+                  <ReferenceLine key={`tick-${tick}`} x={tick} stroke="#94a3b8" strokeDasharray="4 4" />
+                ))}
                 <ReferenceLine x={selectedK} stroke="#334155" strokeDasharray="4 4" />
                 {chartModels.map((model, index) => (
                   <Line
@@ -700,7 +1008,7 @@ export default function LeaderboardPanel() {
       </Paper>
 
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
-        <Stack spacing={2.0}>
+        <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
               title="Full metrics"
@@ -708,6 +1016,7 @@ export default function LeaderboardPanel() {
             />
             <BranchTabs value={fullBranch} onChange={setFullBranch} />
           </Stack>
+
           {!fullMetrics?.rows?.length ? (
             <Alert severity="info">No full-metric rows are available for the current selection.</Alert>
           ) : (
@@ -716,9 +1025,15 @@ export default function LeaderboardPanel() {
                 <TableHead>
                   <TableRow>
                     <TableCell rowSpan={2}>Model</TableCell>
-                    <TableCell colSpan={4} align="center">Interval level</TableCell>
-                    <TableCell colSpan={4} align="center">Segmentation level</TableCell>
-                    <TableCell colSpan={3} align="center">Exact part level</TableCell>
+                    <TableCell colSpan={4} align="center">
+                      Interval level
+                    </TableCell>
+                    <TableCell colSpan={4} align="center">
+                      Segmentation level
+                    </TableCell>
+                    <TableCell colSpan={3} align="center">
+                      Exact part level
+                    </TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell>Precision</TableCell>
@@ -743,17 +1058,116 @@ export default function LeaderboardPanel() {
                           {row.temporary ? <Chip size="small" variant="outlined" label="temporary" /> : null}
                         </Stack>
                       </TableCell>
-                      <TableCell>{formatScore(row.interval_precision)}</TableCell>
-                      <TableCell>{formatScore(row.interval_recall)}</TableCell>
-                      <TableCell>{formatScore(row.interval_f1)}</TableCell>
-                      <TableCell>{formatScore(row.interval_mi, 0)}</TableCell>
-                      <TableCell>{formatScore(row.segmentation_precision)}</TableCell>
-                      <TableCell>{formatScore(row.segmentation_recall)}</TableCell>
-                      <TableCell>{formatScore(row.segmentation_f1)}</TableCell>
-                      <TableCell>{formatScore(row.segmentation_mi, 0)}</TableCell>
-                      <TableCell>{formatScore(row.part_precision)}</TableCell>
-                      <TableCell>{formatScore(row.part_recall)}</TableCell>
-                      <TableCell>{formatScore(row.part_f1)}</TableCell>
+                      <TableCell
+                        sx={
+                          fullColumnHighlights.interval_precision !== undefined &&
+                          Number(row.interval_precision) === fullColumnHighlights.interval_precision
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.interval_precision)}
+                      </TableCell>
+                      <TableCell
+                        sx={
+                          fullColumnHighlights.interval_recall !== undefined &&
+                          Number(row.interval_recall) === fullColumnHighlights.interval_recall
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.interval_recall)}
+                      </TableCell>
+                      <TableCell
+                        sx={
+                          fullColumnHighlights.interval_f1 !== undefined &&
+                          Number(row.interval_f1) === fullColumnHighlights.interval_f1
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.interval_f1)}
+                      </TableCell>
+                      <TableCell
+                        sx={
+                          fullColumnHighlights.interval_mi !== undefined &&
+                          Number(row.interval_mi) === fullColumnHighlights.interval_mi
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.interval_mi, 0)}
+                      </TableCell>
+                      <TableCell
+                        sx={
+                          fullColumnHighlights.segmentation_precision !== undefined &&
+                          Number(row.segmentation_precision) === fullColumnHighlights.segmentation_precision
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.segmentation_precision)}
+                      </TableCell>
+                      <TableCell
+                        sx={
+                          fullColumnHighlights.segmentation_recall !== undefined &&
+                          Number(row.segmentation_recall) === fullColumnHighlights.segmentation_recall
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.segmentation_recall)}
+                      </TableCell>
+                      <TableCell
+                        sx={
+                          fullColumnHighlights.segmentation_f1 !== undefined &&
+                          Number(row.segmentation_f1) === fullColumnHighlights.segmentation_f1
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.segmentation_f1)}
+                      </TableCell>
+                      <TableCell
+                        sx={
+                          fullColumnHighlights.segmentation_mi !== undefined &&
+                          Number(row.segmentation_mi) === fullColumnHighlights.segmentation_mi
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.segmentation_mi, 0)}
+                      </TableCell>
+                      <TableCell
+                        sx={
+                          fullColumnHighlights.part_precision !== undefined &&
+                          Number(row.part_precision) === fullColumnHighlights.part_precision
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.part_precision)}
+                      </TableCell>
+                      <TableCell
+                        sx={
+                          fullColumnHighlights.part_recall !== undefined &&
+                          Number(row.part_recall) === fullColumnHighlights.part_recall
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.part_recall)}
+                      </TableCell>
+                      <TableCell
+                        sx={
+                          fullColumnHighlights.part_f1 !== undefined &&
+                          Number(row.part_f1) === fullColumnHighlights.part_f1
+                            ? { fontWeight: 800 }
+                            : {}
+                        }
+                      >
+                        {formatScore(row.part_f1)}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -764,7 +1178,7 @@ export default function LeaderboardPanel() {
       </Paper>
 
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
-        <Stack spacing={2.0}>
+        <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
               title="Stratifier"
@@ -772,6 +1186,7 @@ export default function LeaderboardPanel() {
             />
             <BranchTabs value={stratBranch} onChange={setStratBranch} />
           </Stack>
+
           <Box
             sx={{
               display: "grid",
@@ -788,10 +1203,13 @@ export default function LeaderboardPanel() {
               onChange={(event) => setStratModel(event.target.value)}
               sx={uniformFieldSx}
             >
-              {(overview?.models || []).map((model) => (
-                <MenuItem key={model.model_id} value={model.model_id}>{model.display_name}</MenuItem>
+              {modelsCombined.map((model) => (
+                <MenuItem key={model.model_id} value={model.model_id}>
+                  {model.display_name}
+                </MenuItem>
               ))}
             </TextField>
+
             <TextField
               select
               label="Rule"
@@ -801,11 +1219,15 @@ export default function LeaderboardPanel() {
               sx={uniformFieldSx}
             >
               {(overview?.available_stratifiers || []).map((rule) => (
-                <MenuItem key={rule.value} value={rule.value}>{rule.label}</MenuItem>
+                <MenuItem key={rule.value} value={rule.value}>
+                  {rule.label}
+                </MenuItem>
               ))}
             </TextField>
+
             <TextField label="Active k" value={selectedK} fullWidth disabled sx={uniformFieldSx} />
           </Box>
+
           {!stratifier?.rows?.length ? (
             <Alert severity="info">No stratified rows are available for the current selection.</Alert>
           ) : (
@@ -840,32 +1262,41 @@ export default function LeaderboardPanel() {
       </Paper>
 
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
-        <Stack spacing={2.0}>
+        <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
               title="Detailed information"
-              subtitle="Ground-truth genes are listed first. Expanding a gene reveals its transcripts, and expanding a transcript reveals the matched predictions from the selected models."
+              subtitle="Transcript-level evidence and matched prediction counts per gene."
             />
-            <BranchTabs value={detailBranch} onChange={(next) => { setDetailBranch(next); setGenePage(1); setExpandedGene(false); }} />
+            <BranchTabs
+              value={detailBranch}
+              onChange={(next) => {
+                setDetailBranch(next);
+                setGenePage(1);
+                setExpandedGene(false);
+              }}
+            />
           </Stack>
 
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: { xs: "1fr", md: "minmax(0, 8fr) minmax(0, 4fr)" },
-              gap: 2,
-              width: "100%",
-            }}
-          >
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "2fr 1fr" }, gap: 2 }}>
             <TextField
               fullWidth
               label="Search ground-truth genes, transcripts, chromosome, or type"
               value={geneQuery}
-              onChange={(event) => { setGeneQuery(event.target.value); setGenePage(1); }}
-              InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} /> }}
+              onChange={(event) => {
+                setGeneQuery(event.target.value);
+                setGenePage(1);
+              }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" sx={{ color: "text.secondary" }} />
+                  </InputAdornment>
+                ),
+              }}
               sx={uniformFieldSx}
             />
-            <TextField label="Active k" value={selectedK} fullWidth disabled sx={uniformFieldSx} />
+            <TextField label="Active k" value={selectedK} disabled sx={uniformFieldSx} />
           </Box>
 
           {geneList.items?.length === 0 ? (
@@ -875,6 +1306,13 @@ export default function LeaderboardPanel() {
               {geneList.items.map((gene) => {
                 const cacheKey = `${detailBranch}|${gene.gene_id}|${selectedK}|${selectedModels.join(",")}`;
                 const detail = geneDetails[cacheKey];
+                const matchedAcrossGene = detail
+                  ? detail.gene.transcripts.reduce(
+                      (accumulator, transcript) => accumulator + (transcript.matched_prediction_count || 0),
+                      0,
+                    )
+                  : null;
+
                 return (
                   <Accordion
                     key={`${detailBranch}-${gene.gene_id}`}
@@ -890,19 +1328,25 @@ export default function LeaderboardPanel() {
                     <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                       <Stack spacing={0.6} sx={{ width: "100%" }}>
                         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                            <Typography fontWeight={760}>{gene.gene_id}</Typography>
-                            {gene.transcript_types.map((item) => <Chip size="small" key={`${gene.gene_id}-${item}`} label={item} />)}
-                            <Chip
-                              size="small"
-                              variant="outlined"
-                              label={`${gene.chromosome}:${gene.start}-${gene.end} (${gene.strand})`}
-                            />
+                          <Typography fontWeight={760}>{gene.gene_id}</Typography>
+                          {(gene.transcript_types || []).map((item) => (
+                            <Chip size="small" key={`${gene.gene_id}-${item}`} label={item} />
+                          ))}
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            label={`${gene.chromosome}:${gene.start}-${gene.end} (${gene.strand})`}
+                          />
                         </Stack>
                         <Typography variant="body2" color="text.secondary">
                           {gene.transcript_count} transcript{gene.transcript_count === 1 ? "" : "s"}
+                          {matchedAcrossGene !== null
+                            ? ` · ${matchedAcrossGene} matched predictions across all transcripts`
+                            : ""}
                         </Typography>
                       </Stack>
                     </AccordionSummary>
+
                     <AccordionDetails>
                       {!detail ? (
                         <Stack direction="row" spacing={1} alignItems="center">
@@ -916,18 +1360,24 @@ export default function LeaderboardPanel() {
                               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                                 <Stack spacing={0.5} sx={{ width: "100%" }}>
                                   <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                                      <Typography fontWeight={760}>{transcript.transcript_id}</Typography>
-                                      <Chip size="small" label={transcript.transcript_type} />
-                                      <Chip size="small" variant="outlined" label={`${transcript.length} nt`} />
-                                      <Chip size="small" variant="outlined" label={`${transcript.matched_prediction_count} matched predictions`} />
-                                      <Chip
-                                        size="small"
-                                        variant="outlined"
-                                        label={`${transcript.chromosome}:${transcript.start}-${transcript.end} (${transcript.strand})`}
-                                      />
+                                    <Typography fontWeight={760}>{transcript.transcript_id}</Typography>
+                                    <Chip size="small" label={transcript.transcript_type} />
+                                    <Chip size="small" variant="outlined" label={`${transcript.length} nt`} />
+                                    <Chip
+                                      size="small"
+                                      variant="outlined"
+                                      label={`${transcript.matched_prediction_count} matched predictions`}
+                                    />
+                                    <Chip
+                                      size="small"
+                                      variant="outlined"
+                                      label={`${transcript.chromosome}:${transcript.start}-${transcript.end}`}
+                                    />
+                                    <Chip size="small" variant="outlined" label={`strand ${transcript.strand}`} />
                                   </Stack>
                                 </Stack>
                               </AccordionSummary>
+
                               <AccordionDetails>
                                 <Stack spacing={1.2}>
                                   <Box
@@ -939,28 +1389,35 @@ export default function LeaderboardPanel() {
                                     }}
                                   >
                                     <Box>
-                                      <Typography variant="subtitle2" sx={{ mb: 0.4 }}>Ground-truth exon segments</Typography>
+                                      <Typography variant="subtitle2" sx={{ mb: 0.4 }}>
+                                        Ground-truth exon segments
+                                      </Typography>
                                       <SegmentBox segments={transcript.exon_segments} />
                                     </Box>
                                     <Box>
-                                      <Typography variant="subtitle2" sx={{ mb: 0.4 }}>Ground-truth CDS segments</Typography>
+                                      <Typography variant="subtitle2" sx={{ mb: 0.4 }}>
+                                        Ground-truth CDS segments
+                                      </Typography>
                                       <SegmentBox segments={transcript.cds_segments} />
                                     </Box>
                                   </Box>
+
                                   {!transcript.matched_predictions.length ? (
-                                    <Alert severity="info">No selected models match this transcript at the current branch.</Alert>
+                                    <Alert severity="info">
+                                      No selected models match this transcript at the current branch.
+                                    </Alert>
                                   ) : (
                                     <Box className="result-table-wrap" sx={{ width: "100%", m: 0 }}>
                                       <Table className="metric-table details-table">
                                         <TableHead>
                                           <TableRow>
                                             <TableCell>Model</TableCell>
+                                            <TableCell>Strand</TableCell>
                                             <TableCell>Prediction</TableCell>
                                             <TableCell>Coordinate</TableCell>
                                             <TableCell>Exon segments</TableCell>
                                             <TableCell>CDS segments</TableCell>
                                             <TableCell>Min k</TableCell>
-                                            <TableCell>Matched at current k</TableCell>
                                           </TableRow>
                                         </TableHead>
                                         <TableBody>
@@ -969,21 +1426,31 @@ export default function LeaderboardPanel() {
                                               <TableCell>
                                                 <Stack direction="row" spacing={1} alignItems="center">
                                                   <Typography>{match.model_name}</Typography>
-                                                  {match.temporary ? <Chip size="small" variant="outlined" label="temporary" /> : null}
+                                                  {match.temporary ? (
+                                                    <Chip size="small" variant="outlined" label="temporary" />
+                                                  ) : null}
                                                 </Stack>
                                               </TableCell>
-                                              <TableCell><ReadonlyCellField value={match.pred_id} /></TableCell>
+                                              <TableCell>{match.strand || "—"}</TableCell>
+                                              <TableCell>
+                                                <ReadonlyCellField value={match.pred_id} />
+                                              </TableCell>
                                               <TableCell>
                                                 <ReadonlyCellField
-                                                  value={match.chromosome ? `${match.chromosome}:${match.start}-${match.end} (${match.strand})` : "—"}
+                                                  value={
+                                                    match.chromosome
+                                                      ? `${match.chromosome}:${match.start}-${match.end}`
+                                                      : "—"
+                                                  }
                                                 />
                                               </TableCell>
-                                              <TableCell><SegmentBox segments={match.exon_segments} /></TableCell>
-                                              <TableCell><SegmentBox segments={match.cds_segments} /></TableCell>
-                                              <TableCell>{formatScore(match.min_k, 0)}</TableCell>
                                               <TableCell>
-                                                <MetricChip label="match" value={match.matched_at_k ? 1 : 0} temporary={false} />
+                                                <SegmentBox segments={match.exon_segments} />
                                               </TableCell>
+                                              <TableCell>
+                                                <SegmentBox segments={match.cds_segments} />
+                                              </TableCell>
+                                              <TableCell>{formatScore(match.min_k, 0)}</TableCell>
                                             </TableRow>
                                           ))}
                                         </TableBody>
@@ -1000,20 +1467,25 @@ export default function LeaderboardPanel() {
                   </Accordion>
                 );
               })}
-            </Stack>
-          )}
 
-          {geneList.total > geneList.page_size ? (
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2} alignItems={{ sm: "center" }} justifyContent="space-between">
-              <Typography color="text.secondary">
-                Showing {Math.min((geneList.page - 1) * geneList.page_size + 1, geneList.total)}–{Math.min(geneList.page * geneList.page_size, geneList.total)} of {geneList.total} genes
-              </Typography>
-              <Stack direction="row" spacing={1.0}>
-                <Button variant="outlined" disabled={geneList.page <= 1} onClick={() => setGenePage((current) => Math.max(1, current - 1))}>Previous</Button>
-                <Button variant="outlined" disabled={geneList.page * geneList.page_size >= geneList.total} onClick={() => setGenePage((current) => current + 1)}>Next</Button>
+              <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={1.2}>
+                <Typography color="text.secondary">
+                  Page {geneList.page || genePage} of {totalGenePages} · {geneList.total || 0} matching genes
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                  <Button disabled={genePage <= 1} onClick={() => setGenePage((value) => Math.max(1, value - 1))}>
+                    Previous
+                  </Button>
+                  <Button
+                    disabled={genePage >= totalGenePages}
+                    onClick={() => setGenePage((value) => Math.min(totalGenePages, value + 1))}
+                  >
+                    Next
+                  </Button>
+                </Stack>
               </Stack>
             </Stack>
-          ) : null}
+          )}
         </Stack>
       </Paper>
     </Stack>
