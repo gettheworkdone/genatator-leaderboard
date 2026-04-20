@@ -57,6 +57,8 @@ const CHART_TICKS = [0, 150, 250, 350, 500];
 
 const CHART_TICKS = [0, 150, 250, 350, 500];
 
+const CHART_AXIS_TICKS = [0, 150, 250, 350, 500];
+
 const METRIC_LABELS = {
   interval_f1: "F1 without segmentation",
   interval_precision: "Precision without segmentation",
@@ -957,11 +959,11 @@ export default function LeaderboardPanel() {
                 }}
               >
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="k" type="number" domain={[0, 500]} allowDecimals={false} ticks={CHART_TICKS} />
+                <XAxis dataKey="k" type="number" domain={[0, 500]} allowDecimals={false} ticks={CHART_AXIS_TICKS} />
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                {CHART_TICKS.map((tick) => (
+                {CHART_AXIS_TICKS.map((tick) => (
                   <ReferenceLine key={`tick-${tick}`} x={tick} stroke="#94a3b8" strokeDasharray="4 4" />
                 ))}
                 <ReferenceLine x={selectedK} stroke="#334155" strokeDasharray="4 4" />
