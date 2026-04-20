@@ -71,6 +71,8 @@ const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
 const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
+const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
+
 const METRIC_LABELS = {
   interval_f1: "F1 without segmentation",
   interval_precision: "Precision without segmentation",
@@ -704,7 +706,7 @@ export default function LeaderboardPanel() {
           <Box sx={{ position: "relative" }}>
             <Box
               sx={{
-                maxHeight: leaderboardExpanded ? "none" : 340,
+                maxHeight: leaderboardExpanded ? "none" : 352,
                 overflow: "hidden",
                 pr: 0.5,
               }}
@@ -716,12 +718,12 @@ export default function LeaderboardPanel() {
                 <Box
                   sx={{
                     position: "absolute",
-                    bottom: 44,
+                    bottom: 38,
                     left: 0,
                     right: 0,
-                    height: 84,
+                    height: 108,
                     background:
-                      "linear-gradient(to bottom, rgba(248,251,250,0), rgba(248,251,250,0.72) 52%, rgba(248,251,250,0.98) 100%)",
+                      "linear-gradient(to bottom, rgba(248,251,250,0) 0%, rgba(248,251,250,0.34) 38%, rgba(248,251,250,0.76) 68%, rgba(248,251,250,0.98) 100%)",
                     pointerEvents: "none",
                   }}
                 />
@@ -1534,7 +1536,12 @@ export default function LeaderboardPanel() {
                 );
               })}
 
-              <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={1.2}>
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                justifyContent="space-between"
+                spacing={1.2}
+                sx={{ mt: 1.6, pt: 0.6 }}
+              >
                 <Typography color="text.secondary">
                   Page {geneList.page || genePage} of {totalGenePages} · {geneList.total || 0} matching genes
                 </Typography>

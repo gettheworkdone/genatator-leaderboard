@@ -270,7 +270,7 @@ export default function MetricPage() {
           <Box sx={{ position: "relative" }}>
             <Box
               sx={{
-                maxHeight: metricExpanded ? "none" : 360,
+                maxHeight: metricExpanded ? "none" : 372,
                 overflow: "hidden",
                 pr: 0.5,
               }}
@@ -281,11 +281,12 @@ export default function MetricPage() {
               <Box
                 sx={{
                   position: "absolute",
-                  bottom: 44,
+                  bottom: 38,
                   left: 0,
                   right: 0,
-                  height: 64,
-                  background: "linear-gradient(to bottom, rgba(248,251,250,0), rgba(248,251,250,1))",
+                  height: 108,
+                  background:
+                    "linear-gradient(to bottom, rgba(248,251,250,0) 0%, rgba(248,251,250,0.34) 38%, rgba(248,251,250,0.76) 68%, rgba(248,251,250,0.98) 100%)",
                   pointerEvents: "none",
                 }}
               />
