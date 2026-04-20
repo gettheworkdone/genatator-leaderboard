@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Accordion,
   AccordionDetails,
@@ -58,6 +58,8 @@ const CHART_TICKS = [0, 150, 250, 350, 500];
 const CHART_TICKS = [0, 150, 250, 350, 500];
 
 const CHART_AXIS_TICKS = [0, 150, 250, 350, 500];
+
+const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
 const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
@@ -165,16 +167,6 @@ function computeColumnHighlights(rows, keys) {
   return highlights;
 }
 
-function MetricChip({ label, value, temporary = false }) {
-  return (
-    <Chip
-      size="small"
-      variant={temporary ? "outlined" : "filled"}
-      label={`${label}: ${value ? "✓" : "✗"}`}
-    />
-  );
-}
-
 function ReadonlyCellField({ value }) {
   return (
     <TextField
@@ -222,6 +214,7 @@ export default function LeaderboardPanel() {
   const [expandedGene, setExpandedGene] = useState(false);
 
   const [uploadFile, setUploadFile] = useState(null);
+  const [uploadModelName, setUploadModelName] = useState("");
   const [uploadMessage, setUploadMessage] = useState("");
   const [uploadLoading, setUploadLoading] = useState(false);
   const [temporaryPreview, setTemporaryPreview] = useState(null);
@@ -361,6 +354,16 @@ export default function LeaderboardPanel() {
   }, []);
 
   useEffect(() => {
+    if (!status?.running && !status?.upload_current) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      reloadLeaderboard();
+    }, 4000);
+    return () => window.clearInterval(intervalId);
+  }, [status?.running, status?.upload_current]);
+
+  useEffect(() => {
     if (window?.MathJax?.typesetPromise) {
       window.MathJax.typesetPromise();
     }
@@ -484,9 +487,7 @@ export default function LeaderboardPanel() {
       .catch(() => setGeneList({ items: [], total: 0, page: 1, page_size: 25 }));
   }, [detailBranch, geneQuery, genePage]);
 
-  const fetchGeneDetail = async (geneId) => {
-    const tempId = temporaryPreview?.model?.model_id;
-    const permanentIds = selectedModels.filter((id) => id !== tempId);
+  const fetchGeneDetail = useCallback(async (geneId) => {
     const cacheKey = `${detailBranch}|${geneId}|${selectedK}|${selectedModels.join(",")}`;
     if (geneDetails[cacheKey]) {
       return;
@@ -554,7 +555,16 @@ export default function LeaderboardPanel() {
     }
 
     setGeneDetails((current) => ({ ...current, [cacheKey]: payload }));
-  };
+  }, [detailBranch, geneDetails, selectedK, selectedModels, temporaryPreview]);
+
+  useEffect(() => {
+    if (!geneList.items?.length || !selectedModels.length) {
+      return;
+    }
+    geneList.items.forEach((gene) => {
+      fetchGeneDetail(gene.gene_id);
+    });
+  }, [geneList.items, fetchGeneDetail, selectedModels.length]);
 
   const submitPreview = async () => {
     setUploadMessage("");
@@ -568,12 +578,13 @@ export default function LeaderboardPanel() {
     try {
       const predGffText = await uploadFile.text();
       const baseName = uploadFile.name.replace(/\.[^.]+$/, "") || "Temporary preview";
+      const modelName = uploadModelName.trim() || baseName;
 
       const response = await fetch("/api/leaderboard/temporary-preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model_name: `Temporary preview: ${baseName}`,
+          model_name: modelName,
           pred_gff_text: predGffText,
         }),
       });
@@ -590,6 +601,7 @@ export default function LeaderboardPanel() {
       );
       setGeneDetails({});
       setUploadFile(null);
+      setUploadModelName("");
 
       if (uploadInputRef.current) {
         uploadInputRef.current.value = "";
@@ -695,7 +707,7 @@ export default function LeaderboardPanel() {
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
         <Stack spacing={1.8}>
           <SectionTitle
-            title="Temporary custom submission"
+            title="Temporary submission"
             subtitle="Upload a prediction GFF and compute a temporary preview for this browser session only."
           />
 
@@ -705,6 +717,14 @@ export default function LeaderboardPanel() {
             request to the permanent repository.
           </Typography>
 
+          <TextField
+            label="Model name"
+            value={uploadModelName}
+            onChange={(event) => setUploadModelName(event.target.value)}
+            placeholder="My model"
+            sx={uniformFieldSx}
+          />
+
           <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
             {uploadFile ? uploadFile.name : "Choose prediction GFF"}
             <input
@@ -712,7 +732,14 @@ export default function LeaderboardPanel() {
               hidden
               type="file"
               accept=".gff,.gff3,.gtf,.txt"
-              onChange={(event) => setUploadFile(event.target.files?.[0] || null)}
+              onChange={(event) => {
+                const nextFile = event.target.files?.[0] || null;
+                setUploadFile(nextFile);
+                if (nextFile && !uploadModelName.trim()) {
+                  const baseName = nextFile.name.replace(/\.[^.]+$/, "");
+                  setUploadModelName(baseName);
+                }
+              }}
             />
           </Button>
 
@@ -1402,7 +1429,6 @@ export default function LeaderboardPanel() {
                                             <TableCell>Exon segments</TableCell>
                                             <TableCell>CDS segments</TableCell>
                                             <TableCell>Min k</TableCell>
-                                            <TableCell>Matched at current k</TableCell>
                                           </TableRow>
                                         </TableHead>
                                         <TableBody>
@@ -1436,13 +1462,6 @@ export default function LeaderboardPanel() {
                                                 <SegmentBox segments={match.cds_segments} />
                                               </TableCell>
                                               <TableCell>{formatScore(match.min_k, 0)}</TableCell>
-                                              <TableCell>
-                                                <MetricChip
-                                                  label="match"
-                                                  value={match.matched_at_k ? 1 : 0}
-                                                  temporary={false}
-                                                />
-                                              </TableCell>
                                             </TableRow>
                                           ))}
                                         </TableBody>

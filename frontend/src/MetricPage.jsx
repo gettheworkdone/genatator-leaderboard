@@ -341,10 +341,7 @@ export default function MetricPage() {
 
           {selectedMetrics ? (
             <Stack spacing={2.2}>
-              <Alert severity="info">
-                Summary cards below show the metric at k = {selectedMetrics.k}. The full computation covers the entire range
-                from 0 to 500.
-              </Alert>
+              <Alert severity="info">Summary cards below show the metric at k = {selectedMetrics.k}.</Alert>
               <Grid container spacing={2}>
                 <Grid item xs={12} lg={6}>
                   <Paper className="nested-panel" sx={{ p: 2.0 }}>
