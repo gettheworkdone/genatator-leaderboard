@@ -51,6 +51,27 @@ const CHART_COLORS = [
   "#1d4ed8",
   "#ea580c",
 ];
+const CHART_TICKS = [0, 150, 250, 350, 500];
+
+const CHART_TICKS = [0, 150, 250, 350, 500];
+
+const CHART_TICKS = [0, 150, 250, 350, 500];
+
+const CHART_AXIS_TICKS = [0, 150, 250, 350, 500];
+
+const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
+
+const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
+
+const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
+
+const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
+
+const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
+
+const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
+
+const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
 const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
@@ -184,9 +205,7 @@ function BranchTabs({ value, onChange }) {
 }
 
 function modelValueAtK(overview, model, branch, metricKey, selectedK) {
-  if (!overview || !model?.curves?.[branch]?.[metricKey]) {
-    return null;
-  }
+  if (!overview || !model?.curves?.[branch]?.[metricKey]) return null;
   const index = Math.max(0, Math.min(Number(selectedK) || 0, overview.k_values.length - 1));
   return model.curves[branch][metricKey][index];
 }
