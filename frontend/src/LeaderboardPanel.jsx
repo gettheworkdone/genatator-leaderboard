@@ -59,6 +59,8 @@ const CHART_TICKS = [0, 150, 250, 350, 500];
 
 const CHART_AXIS_TICKS = [0, 150, 250, 350, 500];
 
+const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
+
 const METRIC_LABELS = {
   interval_f1: "F1 without segmentation",
   interval_precision: "Precision without segmentation",
