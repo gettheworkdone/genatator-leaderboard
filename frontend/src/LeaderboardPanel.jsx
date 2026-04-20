@@ -67,6 +67,8 @@ const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
 const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
+const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
+
 const METRIC_LABELS = {
   interval_f1: "F1 without segmentation",
   interval_precision: "Precision without segmentation",
@@ -90,12 +92,62 @@ const SORT_METRICS = [
 ];
 
 const LEADERBOARD_DESCRIPTION_HTML = `
-  <p>The leaderboard is the comparative layer built on top of the metric described above. Its role is not to display a single ranking number, but to organize the metric outputs so that differences between models remain biologically interpretable. For that reason, the main table reports eight summary values: interval-level F1, interval-level MI, segmentation-level F1, and segmentation-level MI for the <strong>exon</strong> branch, and the same four quantities for the <strong>CDS</strong> branch.</p>
-  <p>The graph panel then shows any selected metric as a function of the tolerance parameter \\(k\\). This presentation is essential, because models that appear similar at one threshold may behave very differently across the full tolerance range. A model that improves only at large \\(k\\) is fundamentally different from a model that is already accurate near exact matching. Therefore, the curve view reveals boundary precision, robustness, and error sensitivity more clearly than a single operating point.</p>
-  <p>Once a specific value of \\(k\\) is selected, the <strong>Full metrics</strong> panel expands the summary into its components: matched and unmatched predictions, recovered and missed genes, MI counts, and exact exon or CDS part-level scores. In this way, a model’s position on the leaderboard can be explained rather than merely stated, since improvements can be traced to precision, recall, structural correctness, or isoform recovery.</p>
-  <p>The <strong>Stratifier</strong> panel presents the same metric outputs after grouping the data by strand, chromosome, or transcript type. As a result, users can determine whether a model is uniformly strong or whether its performance is concentrated in particular biological contexts. This grouped view is especially important when global averages would otherwise conceal systematic weaknesses.</p>
-  <p>The <strong>Detailed information</strong> panel provides transcript-resolved evidence for every ground-truth gene. For each reference transcript, it lists the supporting predictions, the minimum tolerance at which each support appears, and the contribution of the parent gene to multi-isoform recovery. Thus, the leaderboard remains auditable from the highest-level comparison down to individual biological objects.</p>
-  <p>In addition, the leaderboard allows temporary evaluation of user-supplied GFF predictions under the same rules. These temporary entries appear alongside the permanent models during the current session, while permanent inclusion requires adding the prediction to the maintained repository. This keeps model comparison open and reproducible without turning the leaderboard itself into long-term storage for arbitrary uploads.</p>
+  <p>
+    The leaderboard is meant to help you read the metric in stages, from a quick overview to transcript-level evidence.
+    The first panel, <strong>Temporary submission</strong>, lets you upload a prediction GFF and give it a model name for
+    the current browser session. The uploaded file is evaluated on demand under the same rules as the permanent entries,
+    appears in the tables and plots for that session, and disappears after refresh. This makes it easy to compare a new model
+    without changing the permanent ranking.
+  </p>
+
+  <p>
+    The next place to look is <strong>Main metrics</strong>. This is the compact overview of the most important quantities,
+    and it shows the exon and CDS branches side by side at the same active tolerance \(k\). The control
+    <strong>Active k</strong> sets the boundary tolerance currently used in the table, and <strong>Sort rows</strong> tells the
+    table which score should define the ordering. Under each branch, the column <strong>F1 w/o seg.</strong> means
+    interval-level F1 before the structural filter is applied. The column <strong>MI w/o seg.</strong> means multi-isoform
+    recovery at the same interval level. The column <strong>F1 with seg.</strong> means F1 after interval-matched pairs are
+    additionally required to pass the segmentation check. The column <strong>MI with seg.</strong> is the corresponding
+    multi-isoform count after that same structural filter. Read the <strong>Exon</strong> side as recovery of transcript
+    architecture, and the <strong>CDS</strong> side as recovery of coding structure.
+  </p>
+
+  <p>
+    If you want to see how a score changes as the tolerance varies, use the curve view on the page together with Main metrics.
+    That is the fastest way to understand whether a model is precise already at small \(k\) or improves only when the
+    matching rule becomes more permissive. Drag your mouse over the curve to inspect values at different tolerances, and use
+    that operating point to interpret the tables below.
+  </p>
+
+  <p>
+    The <strong>Full metrics</strong> panel expands the summary at the currently active \(k\). The branch tabs switch between
+    exon and CDS views. Inside the table, the block <strong>Interval level</strong> reports
+    <strong>Precision</strong>, <strong>Recall</strong>, <strong>F1</strong>, and <strong>MI</strong> exactly as defined in the
+    metric description. The block <strong>Segmentation level</strong> reports the same four quantities after the structural
+    filter has been applied. The block <strong>Exact part level</strong> reports part-level
+    <strong>Precision</strong>, <strong>Recall</strong>, and <strong>F1</strong> for pooled unique exon intervals in the exon branch
+    or pooled unique CDS intervals in the CDS branch. This panel is where you go when the summary table tells you that two
+    models differ and you want to see whether the difference comes from prediction purity, gene recovery, structural fidelity,
+    isoform recovery, or exact part detection.
+  </p>
+
+  <p>
+    The <strong>Stratifier</strong> panel answers a different question: where does a model perform well or poorly inside the
+    benchmark? You choose a <strong>Model</strong>, a biologically meaningful grouping <strong>Rule</strong>, a branch, and an
+    active \(k\). The rows then correspond to the selected groups, such as transcript type, strand, or chromosome. The
+    columns <strong>Interval F1</strong> and <strong>Interval MI</strong> are the interval-level scores within that subset. The
+    columns <strong>Segmentation F1</strong> and <strong>Segmentation MI</strong> are the corresponding scores after the
+    segmentation filter. The column <strong>Exact part F1</strong> reports pooled exact exon or CDS recovery within the same
+    subset. This panel is useful when a model looks strong on average but behaves unevenly across biological categories.
+  </p>
+
+  <p>
+    The last panel, <strong>Detailed information</strong>, moves from model summaries to individual reference genes and
+    transcripts. It starts from the ground-truth gene list. Once you open a gene, you can inspect its annotated transcripts and
+    their basic attributes. Once you open a transcript, you can see which predictions matched it and the smallest tolerance
+    \(k\) at which each match appears. This is the panel to use when you want to verify why a model gained or lost score on
+    a particular biological example rather than only reading the aggregate numbers.
+  </p>
 `;
 
 function SectionTitle({ icon = null, title, subtitle = null }) {
@@ -850,7 +902,6 @@ export default function LeaderboardPanel() {
                       <TableCell>
                         <Stack direction="row" spacing={1} alignItems="center">
                           <Typography fontWeight={760}>{row.display_name}</Typography>
-                          {row.temporary ? <Chip size="small" variant="outlined" label="temporary" /> : null}
                         </Stack>
                       </TableCell>
                       <TableCell
@@ -994,7 +1045,12 @@ export default function LeaderboardPanel() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="k" type="number" domain={[0, 500]} allowDecimals={false} ticks={CHART_AXIS_TICKS} />
                 <YAxis />
-                <Tooltip />
+                <Tooltip
+                  formatter={(value) => {
+                    const numeric = Number(value);
+                    return Number.isFinite(numeric) ? numeric.toFixed(4) : "—";
+                  }}
+                />
                 <Legend />
                 {CHART_AXIS_TICKS.map((tick) => (
                   <ReferenceLine key={`tick-${tick}`} x={tick} stroke="#94a3b8" strokeDasharray="4 4" />
@@ -1066,7 +1122,6 @@ export default function LeaderboardPanel() {
                       <TableCell>
                         <Stack direction="row" spacing={1} alignItems="center">
                           <Typography fontWeight={760}>{row.display_name}</Typography>
-                          {row.temporary ? <Chip size="small" variant="outlined" label="temporary" /> : null}
                         </Stack>
                       </TableCell>
                       <TableCell
@@ -1437,9 +1492,6 @@ export default function LeaderboardPanel() {
                                               <TableCell>
                                                 <Stack direction="row" spacing={1} alignItems="center">
                                                   <Typography>{match.model_name}</Typography>
-                                                  {match.temporary ? (
-                                                    <Chip size="small" variant="outlined" label="temporary" />
-                                                  ) : null}
                                                 </Stack>
                                               </TableCell>
                                               <TableCell>{match.strand || "—"}</TableCell>
