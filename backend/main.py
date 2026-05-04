@@ -223,6 +223,19 @@ def leaderboard_upload(payload: TemporaryUploadRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.post("/api/leaderboard/temporary-preview")
+def leaderboard_temporary_preview(payload: TemporaryUploadRequest) -> dict[str, Any]:
+    if not payload.pred_gff_text.strip():
+        raise HTTPException(status_code=400, detail="Prediction GFF text is empty.")
+    try:
+        return LEADERBOARD.compute_temporary_preview(
+            model_name=payload.model_name,
+            pred_gff_text=payload.pred_gff_text,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/", response_model=None)
 def root() -> Response:
     index_file = STATIC_DIR / "index.html"
