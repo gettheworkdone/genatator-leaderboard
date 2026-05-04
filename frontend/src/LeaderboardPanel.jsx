@@ -77,6 +77,8 @@ const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
 const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
+const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
+
 const METRIC_LABELS = {
   interval_f1: "F1 without segmentation",
   interval_precision: "Precision without segmentation",
@@ -420,14 +422,17 @@ export default function LeaderboardPanel() {
   }, []);
 
   useEffect(() => {
-    if (!status?.running && !status?.upload_current) {
-      return;
-    }
     const intervalId = window.setInterval(() => {
       reloadLeaderboard();
     }, 4000);
     return () => window.clearInterval(intervalId);
-  }, [status?.running, status?.upload_current]);
+  }, []);
+
+  useEffect(() => {
+    if (window?.MathJax?.typesetPromise) {
+      window.MathJax.typesetPromise();
+    }
+  }, [leaderboardExpanded, overview]);
 
   useEffect(() => {
     if (window?.MathJax?.typesetPromise) {
@@ -710,7 +715,7 @@ export default function LeaderboardPanel() {
 
   return (
     <Stack spacing={3.2}>
-      <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 }, order: 6 }}>
+      <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 }, order: 6, mt: 1.2 }}>
         <Stack spacing={2}>
           <SectionTitle title="Leaderboard description" />
 
@@ -834,7 +839,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 1 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 1, mt: 0 }}>
         <Stack spacing={2}>
           <Stack
             direction={{ xs: "column", lg: "row" }}
