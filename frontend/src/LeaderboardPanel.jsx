@@ -75,6 +75,8 @@ const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
 const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
+const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
+
 const METRIC_LABELS = {
   interval_f1: "F1 without segmentation",
   interval_precision: "Precision without segmentation",
@@ -275,7 +277,7 @@ export default function LeaderboardPanel() {
   const [uploadModelName, setUploadModelName] = useState("");
   const [uploadMessage, setUploadMessage] = useState("");
   const [uploadLoading, setUploadLoading] = useState(false);
-  const [temporaryPreview, setTemporaryPreview] = useState(null);
+  const [temporaryPreviews, setTemporaryPreviews] = useState([]);
 
   const [leaderboardExpanded, setLeaderboardExpanded] = useState(false);
   const uploadInputRef = useRef(null);
@@ -290,8 +292,14 @@ export default function LeaderboardPanel() {
 
   const modelsCombined = useMemo(() => {
     const base = overview?.models || [];
-    return temporaryPreview?.model ? [...base, temporaryPreview.model] : base;
-  }, [overview, temporaryPreview]);
+    const temporaryModels = temporaryPreviews.map((item) => item.model).filter(Boolean);
+    return [...base, ...temporaryModels];
+  }, [overview, temporaryPreviews]);
+
+  const temporaryPreviewMap = useMemo(
+    () => Object.fromEntries(temporaryPreviews.map((item) => [item.model?.model_id, item])),
+    [temporaryPreviews],
+  );
 
   const chartModels = useMemo(() => {
     if (!selectedModels.length) {
@@ -438,7 +446,7 @@ export default function LeaderboardPanel() {
       setSelectedModels((current) => {
         const allIds = modelsCombined.map((item) => item.model_id);
         if (!current.length) {
-          return allIds;
+          return mainRows.slice(0, 5).map((row) => row.model_id);
         }
         const filtered = current.filter((item) => allIds.includes(item));
         const missing = allIds.filter((item) => !filtered.includes(item));
@@ -457,8 +465,8 @@ export default function LeaderboardPanel() {
       return;
     }
 
-    const temporaryModelId = temporaryPreview?.model?.model_id;
-    const fullMetricsModelIds = selectedModels.filter((item) => item !== temporaryModelId);
+    const temporaryIds = new Set(temporaryPreviews.map((item) => item.model?.model_id).filter(Boolean));
+    const fullMetricsModelIds = selectedModels.filter((item) => !temporaryIds.has(item));
     const params = new URLSearchParams({
       branch: fullBranch,
       k: `${selectedK}`,
@@ -472,16 +480,17 @@ export default function LeaderboardPanel() {
       .then((response) => response.json())
       .then((payload) => {
         const rows = [...(payload.rows || [])];
-        if (temporaryPreview && selectedModels.includes(temporaryModelId)) {
-          const localRow = temporaryPreview.full_metrics?.[fullBranch]?.[selectedK];
-          if (localRow) {
-            rows.push(localRow);
+        temporaryPreviews.forEach((preview) => {
+          const tempId = preview.model?.model_id;
+          if (tempId && selectedModels.includes(tempId)) {
+            const localRow = preview.full_metrics?.[fullBranch]?.[selectedK];
+            if (localRow) rows.push(localRow);
           }
-        }
+        });
         setFullMetrics({ ...payload, rows });
       })
       .catch(() => setFullMetrics(null));
-  }, [overview, modelsCombined, fullBranch, selectedK, selectedModels, temporaryPreview]);
+  }, [overview, modelsCombined, fullBranch, selectedK, selectedModels, temporaryPreviews]);
 
   useEffect(() => {
     if (!stratModel) {
@@ -489,8 +498,9 @@ export default function LeaderboardPanel() {
       return;
     }
 
-    if (temporaryPreview && stratModel === temporaryPreview.model.model_id) {
-      const rows = Object.entries(temporaryPreview.stratifier?.[stratBranch]?.[stratRule] || {})
+    const stratPreview = temporaryPreviewMap[stratModel];
+    if (stratPreview) {
+      const rows = Object.entries(stratPreview.stratifier?.[stratBranch]?.[stratRule] || {})
         .map(([groupName, perK]) => {
           const metrics = perK[selectedK];
           if (!metrics) {
@@ -529,7 +539,7 @@ export default function LeaderboardPanel() {
       .then((response) => response.json())
       .then((payload) => setStratifier(payload))
       .catch(() => setStratifier(null));
-  }, [stratModel, stratBranch, stratRule, selectedK, temporaryPreview]);
+  }, [stratModel, stratBranch, stratRule, selectedK, temporaryPreviewMap]);
 
   useEffect(() => {
     const params = new URLSearchParams({
@@ -551,8 +561,8 @@ export default function LeaderboardPanel() {
       return;
     }
 
-    const temporaryModelId = temporaryPreview?.model?.model_id;
-    const geneDetailModelIds = selectedModels.filter((item) => item !== temporaryModelId);
+    const temporaryIds = new Set(temporaryPreviews.map((item) => item.model?.model_id).filter(Boolean));
+    const geneDetailModelIds = selectedModels.filter((item) => !temporaryIds.has(item));
     const params = new URLSearchParams({
       branch: detailBranch,
       k: `${selectedK}`,
@@ -565,12 +575,13 @@ export default function LeaderboardPanel() {
     const response = await fetch(`/api/leaderboard/gene/${encodeURIComponent(geneId)}?${params.toString()}`);
     const payload = await response.json();
 
-    if (temporaryPreview && selectedModels.includes(temporaryModelId)) {
-      payload.gene.transcripts = payload.gene.transcripts.map((transcript) => {
-        const local = temporaryPreview.detailed?.[detailBranch]?.[transcript.transcript_id];
-        if (!local) {
-          return transcript;
-        }
+    payload.gene.transcripts = payload.gene.transcripts.map((transcript) => {
+      let merged = transcript;
+      temporaryPreviews.forEach((preview) => {
+        const temporaryModelId = preview.model?.model_id;
+        if (!temporaryModelId || !selectedModels.includes(temporaryModelId)) return;
+        const local = preview.detailed?.[detailBranch]?.[transcript.transcript_id];
+        if (!local) return;
 
         const intervalMap = Object.fromEntries(
           (local["interval-level"]?.predictions || [])
@@ -585,12 +596,12 @@ export default function LeaderboardPanel() {
         );
 
         const extras = [...new Set([...Object.keys(intervalMap), ...Object.keys(segmentationMap)])].map((predId) => {
-          const predMeta = temporaryPreview.prediction_index?.[predId] || {};
+          const predMeta = preview.prediction_index?.[predId] || {};
           const candidates = [intervalMap[predId], segmentationMap[predId]].filter((value) => Number.isFinite(value));
           const minK = candidates.length ? Math.min(...candidates) : null;
           return {
             model_id: temporaryModelId,
-            model_name: temporaryPreview.model.display_name,
+            model_name: preview.model.display_name,
             temporary: true,
             pred_id: predId,
             chromosome: predMeta.chromosome,
@@ -604,16 +615,17 @@ export default function LeaderboardPanel() {
           };
         });
 
-        return {
-          ...transcript,
-          matched_predictions: [...transcript.matched_predictions, ...extras],
-          matched_prediction_count: transcript.matched_predictions.length + extras.length,
+        merged = {
+          ...merged,
+          matched_predictions: [...merged.matched_predictions, ...extras],
+          matched_prediction_count: merged.matched_predictions.length + extras.length,
         };
       });
-    }
+      return merged;
+    });
 
     setGeneDetails((current) => ({ ...current, [cacheKey]: payload }));
-  }, [detailBranch, geneDetails, selectedK, selectedModels, temporaryPreview]);
+  }, [detailBranch, geneDetails, selectedK, selectedModels, temporaryPreviews]);
 
   useEffect(() => {
     if (!geneList.items?.length || !selectedModels.length) {
@@ -653,7 +665,7 @@ export default function LeaderboardPanel() {
         return;
       }
 
-      setTemporaryPreview(payload);
+      setTemporaryPreviews((current) => [...current, payload]);
       setUploadMessage(
         "Temporary preview computed. It is visible only in this session and disappears after page refresh.",
       );
@@ -698,7 +710,7 @@ export default function LeaderboardPanel() {
 
   return (
     <Stack spacing={3.2}>
-      <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 } }}>
+      <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 }, order: 6 }}>
         <Stack spacing={2}>
           <SectionTitle title="Leaderboard description" />
 
@@ -760,7 +772,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 7 }}>
         <Stack spacing={1.8}>
           <SectionTitle
             title="Temporary submission"
@@ -822,7 +834,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 1 }}>
         <Stack spacing={2}>
           <Stack
             direction={{ xs: "column", lg: "row" }}
@@ -999,7 +1011,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 2 }}>
         <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
@@ -1013,6 +1025,13 @@ export default function LeaderboardPanel() {
                 label="Metric"
                 value={graphMetric}
                 onChange={(event) => setGraphMetric(event.target.value)}
+                SelectProps={{
+                  MenuProps: {
+                    PaperProps: {
+                      sx: { backgroundColor: "#f8fbfa", backdropFilter: "none" },
+                    },
+                  },
+                }}
                 sx={{ minWidth: 240 }}
               >
                 {Object.entries(METRIC_LABELS).map(([value, label]) => (
@@ -1078,7 +1097,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 3 }}>
         <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
@@ -1247,7 +1266,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 4 }}>
         <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
@@ -1331,7 +1350,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 5 }}>
         <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle

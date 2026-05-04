@@ -48,8 +48,8 @@ const METRIC_DESCRIPTION_HTML = String.raw`
   <p>
     This metric is built for the situation in which a prediction may look locally accurate and still be biologically wrong.
     In genome annotation, a small shift at a transcript, exon, or coding boundary can preserve much of the basewise signal
-    while changing splice structure, coding frame, or the translated product. For that reason, the metric does not start from
-    per-nucleotide agreement. Instead, it treats reconstructed transcript objects and their structural parts as the primary
+    while changing splice structure, coding frame, or the translated product. For that reason, we do not perform per-nucleotide
+    comparisons. Instead, it treats reconstructed transcript objects and their structural parts as the primary
     units of evaluation.
   </p>
 
