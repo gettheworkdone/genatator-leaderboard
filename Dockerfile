@@ -29,7 +29,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY ./ ./
 RUN mkdir -p /app/static
 COPY --from=frontend-build /app/frontend/dist /app/static
-RUN chmod +x /app/start.sh
 
 EXPOSE 7860
 
