@@ -51,33 +51,6 @@ const CHART_COLORS = [
   "#1d4ed8",
   "#ea580c",
 ];
-const CHART_TICKS = [0, 150, 250, 350, 500];
-
-const CHART_TICKS = [0, 150, 250, 350, 500];
-
-const CHART_TICKS = [0, 150, 250, 350, 500];
-
-const CHART_AXIS_TICKS = [0, 150, 250, 350, 500];
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
 const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
@@ -711,7 +684,7 @@ export default function LeaderboardPanel() {
 
   return (
     <Stack spacing={0}>
-      <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 }, mt: 3.2 }}>
+      <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 }, order: 6, mt: 3.2 }}>
         <Stack spacing={2}>
           <SectionTitle title="Leaderboard description" />
 
@@ -773,7 +746,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, mt: 3.2 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 7, mt: 3.2 }}>
         <Stack spacing={1.8}>
           <SectionTitle
             title="Temporary submission"
@@ -835,7 +808,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, mt: 0 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 1, mt: 0 }}>
         <Stack spacing={2}>
           <Stack
             direction={{ xs: "column", lg: "row" }}
@@ -1014,7 +987,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, mt: 3.2 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 2, mt: 3.2 }}>
         <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
@@ -1100,7 +1073,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, mt: 3.2 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 3, mt: 3.2 }}>
         <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
@@ -1271,7 +1244,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, mt: 3.2 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 4, mt: 3.2 }}>
         <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
@@ -1355,7 +1328,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, mt: 3.2 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 5, mt: 3.2 }}>
         <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
