@@ -404,7 +404,7 @@ export default function LeaderboardPanel() {
       reloadLeaderboard();
     }, 4000);
     return () => window.clearInterval(intervalId);
-  }, []);
+  }, [useStrand]);
 
   useEffect(() => {
     if (window?.MathJax?.typesetPromise) {
@@ -881,7 +881,7 @@ export default function LeaderboardPanel() {
                     <TableCell rowSpan={2} sx={{ width: 56, minWidth: 56 }}>
                       Rank
                     </TableCell>
-                    <TableCell rowSpan={2}>Model</TableCell>
+                    <TableCell rowSpan={2} sx={{ minWidth: 270 }}>Model</TableCell>
                     <TableCell colSpan={4} align="center">
                       Exon
                     </TableCell>

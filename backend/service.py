@@ -412,31 +412,21 @@ class LeaderboardService:
                 stage="loading-ground-truth",
                 message="Loading ground-truth annotations and preparing branch-specific indices.",
             )
+            shared_indices = {
+                "exon": self._build_ground_truth_index(
+                    gene_biotypes=EXON_GENE_BIOTYPES,
+                    transcript_types=EXON_TRANSCRIPT_TYPES,
+                    use_strand=True,
+                ),
+                "cds": self._build_ground_truth_index(
+                    gene_biotypes=CDS_GENE_BIOTYPES,
+                    transcript_types=CDS_TRANSCRIPT_TYPES,
+                    use_strand=True,
+                ),
+            }
             self._ground_truth_indices_by_strand = {
-                True: {
-                    "exon": self._build_ground_truth_index(
-                        gene_biotypes=EXON_GENE_BIOTYPES,
-                        transcript_types=EXON_TRANSCRIPT_TYPES,
-                        use_strand=True,
-                    ),
-                    "cds": self._build_ground_truth_index(
-                        gene_biotypes=CDS_GENE_BIOTYPES,
-                        transcript_types=CDS_TRANSCRIPT_TYPES,
-                        use_strand=True,
-                    ),
-                },
-                False: {
-                    "exon": self._build_ground_truth_index(
-                        gene_biotypes=EXON_GENE_BIOTYPES,
-                        transcript_types=EXON_TRANSCRIPT_TYPES,
-                        use_strand=False,
-                    ),
-                    "cds": self._build_ground_truth_index(
-                        gene_biotypes=CDS_GENE_BIOTYPES,
-                        transcript_types=CDS_TRANSCRIPT_TYPES,
-                        use_strand=False,
-                    ),
-                },
+                True: shared_indices,
+                False: shared_indices,
             }
 
             self._set_state(
