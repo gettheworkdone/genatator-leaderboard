@@ -8,7 +8,9 @@ import {
   Box,
   Button,
   Chip,
+  Checkbox,
   CircularProgress,
+  FormControlLabel,
   InputAdornment,
   LinearProgress,
   MenuItem,
@@ -51,33 +53,6 @@ const CHART_COLORS = [
   "#1d4ed8",
   "#ea580c",
 ];
-const CHART_TICKS = [0, 150, 250, 350, 500];
-
-const CHART_TICKS = [0, 150, 250, 350, 500];
-
-const CHART_TICKS = [0, 150, 250, 350, 500];
-
-const CHART_AXIS_TICKS = [0, 150, 250, 350, 500];
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
 const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
@@ -257,6 +232,7 @@ export default function LeaderboardPanel() {
   const [overview, setOverview] = useState(null);
   const [selectedKInput, setSelectedKInput] = useState("250");
   const [sortMetric, setSortMetric] = useState("exon_segmentation_f1");
+  const [useStrand, setUseStrand] = useState(true);
 
   const [graphBranch, setGraphBranch] = useState("exon");
   const [graphMetric, setGraphMetric] = useState("segmentation_f1");
@@ -407,7 +383,7 @@ export default function LeaderboardPanel() {
 
   const fetchOverview = async () => {
     try {
-      const response = await fetch("/api/leaderboard/overview");
+      const response = await fetch(`/api/leaderboard/overview?use_strand=${useStrand ? "true" : "false"}`);
       const payload = await response.json();
       setOverview(payload);
     } catch {
@@ -421,7 +397,7 @@ export default function LeaderboardPanel() {
 
   useEffect(() => {
     reloadLeaderboard();
-  }, []);
+  }, [useStrand]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -469,12 +445,14 @@ export default function LeaderboardPanel() {
     const params = new URLSearchParams({
       branch: fullBranch,
       k: `${selectedK}`,
+      use_strand: useStrand ? "true" : "false",
     });
 
     if (fullMetricsModelIds.length > 0) {
       params.set("model_ids", fullMetricsModelIds.join(","));
     }
 
+    params.set("use_strand", useStrand ? "true" : "false");
     fetch(`/api/leaderboard/full-metrics?${params.toString()}`)
       .then((response) => response.json())
       .then((payload) => {
@@ -482,14 +460,14 @@ export default function LeaderboardPanel() {
         temporaryPreviews.forEach((preview) => {
           const tempId = preview.model?.model_id;
           if (tempId && selectedModels.includes(tempId)) {
-            const localRow = preview.full_metrics?.[fullBranch]?.[selectedK];
+            const localRow = (preview.full_metrics_by_strand?.[useStrand ? "true" : "false"]?.[fullBranch]?.[selectedK]) || preview.full_metrics?.[fullBranch]?.[selectedK];
             if (localRow) rows.push(localRow);
           }
         });
         setFullMetrics({ ...payload, rows });
       })
       .catch(() => setFullMetrics(null));
-  }, [overview, modelsCombined, fullBranch, selectedK, selectedModels, temporaryPreviews]);
+  }, [overview, modelsCombined, fullBranch, selectedK, selectedModels, temporaryPreviews, useStrand]);
 
   useEffect(() => {
     if (!stratModel) {
@@ -499,7 +477,7 @@ export default function LeaderboardPanel() {
 
     const stratPreview = temporaryPreviewMap[stratModel];
     if (stratPreview) {
-      const rows = Object.entries(stratPreview.stratifier?.[stratBranch]?.[stratRule] || {})
+      const rows = Object.entries(((stratPreview.stratifier_by_strand?.[useStrand ? "true" : "false"] || stratPreview.stratifier)?.[stratBranch]?.[stratRule]) || {})
         .map(([groupName, perK]) => {
           const metrics = perK[selectedK];
           if (!metrics) {
@@ -532,13 +510,14 @@ export default function LeaderboardPanel() {
       branch: stratBranch,
       rule: stratRule,
       k: `${selectedK}`,
+      use_strand: useStrand ? "true" : "false",
     });
 
     fetch(`/api/leaderboard/stratifier?${params.toString()}`)
       .then((response) => response.json())
       .then((payload) => setStratifier(payload))
       .catch(() => setStratifier(null));
-  }, [stratModel, stratBranch, stratRule, selectedK, temporaryPreviewMap]);
+  }, [stratModel, stratBranch, stratRule, selectedK, temporaryPreviewMap, useStrand]);
 
   useEffect(() => {
     const params = new URLSearchParams({
@@ -546,13 +525,14 @@ export default function LeaderboardPanel() {
       query: geneQuery,
       page: `${genePage}`,
       page_size: "25",
+      use_strand: useStrand ? "true" : "false",
     });
 
     fetch(`/api/leaderboard/genes?${params.toString()}`)
       .then((response) => response.json())
       .then((payload) => setGeneList(payload))
       .catch(() => setGeneList({ items: [], total: 0, page: 1, page_size: 25 }));
-  }, [detailBranch, geneQuery, genePage]);
+  }, [detailBranch, geneQuery, genePage, useStrand]);
 
   const fetchGeneDetail = useCallback(async (geneId) => {
     const cacheKey = `${detailBranch}|${geneId}|${selectedK}|${selectedModels.join(",")}`;
@@ -565,6 +545,7 @@ export default function LeaderboardPanel() {
     const params = new URLSearchParams({
       branch: detailBranch,
       k: `${selectedK}`,
+      use_strand: useStrand ? "true" : "false",
     });
 
     if (geneDetailModelIds.length > 0) {
@@ -579,7 +560,7 @@ export default function LeaderboardPanel() {
       temporaryPreviews.forEach((preview) => {
         const temporaryModelId = preview.model?.model_id;
         if (!temporaryModelId || !selectedModels.includes(temporaryModelId)) return;
-        const local = preview.detailed?.[detailBranch]?.[transcript.transcript_id];
+        const local = ((preview.detailed_by_strand?.[useStrand ? "true" : "false"] || preview.detailed)?.[detailBranch]?.[transcript.transcript_id]);
         if (!local) return;
 
         const intervalMap = Object.fromEntries(
@@ -710,8 +691,8 @@ export default function LeaderboardPanel() {
   }, [status, progressValue]);
 
   return (
-    <Stack spacing={3.2}>
-      <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 }, order: 6, mt: 2.8 }}>
+    <Stack spacing={0}>
+      <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 }, order: 6, mt: 3.2 }}>
         <Stack spacing={2}>
           <SectionTitle title="Leaderboard description" />
 
@@ -773,7 +754,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 7 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 7, mt: 3.2 }}>
         <Stack spacing={1.8}>
           <SectionTitle
             title="Temporary submission"
@@ -835,7 +816,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 1 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 1, mt: 0 }}>
         <Stack spacing={2}>
           <Stack
             direction={{ xs: "column", lg: "row" }}
@@ -867,6 +848,11 @@ export default function LeaderboardPanel() {
                 }}
                 inputProps={{ min: 0, max: 500 }}
                 sx={{ width: 120, ...uniformFieldSx }}
+              />
+
+              <FormControlLabel
+                control={<Checkbox checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />}
+                label="Use strand"
               />
 
               <TextField
@@ -1014,7 +1000,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 2 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 2, mt: 3.2 }}>
         <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
@@ -1100,7 +1086,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 3 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 3, mt: 3.2 }}>
         <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
@@ -1271,7 +1257,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 4 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 4, mt: 3.2 }}>
         <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
@@ -1355,7 +1341,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 5 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 5, mt: 3.2 }}>
         <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
