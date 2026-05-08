@@ -452,6 +452,7 @@ export default function LeaderboardPanel() {
       params.set("model_ids", fullMetricsModelIds.join(","));
     }
 
+    params.set("use_strand", useStrand ? "true" : "false");
     fetch(`/api/leaderboard/full-metrics?${params.toString()}`)
       .then((response) => response.json())
       .then((payload) => {
