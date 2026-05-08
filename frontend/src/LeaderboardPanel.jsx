@@ -79,6 +79,8 @@ const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
 const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
+const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
+
 const METRIC_LABELS = {
   interval_f1: "F1 without segmentation",
   interval_precision: "Precision without segmentation",
@@ -435,12 +437,6 @@ export default function LeaderboardPanel() {
   }, [leaderboardExpanded, overview]);
 
   useEffect(() => {
-    if (window?.MathJax?.typesetPromise) {
-      window.MathJax.typesetPromise();
-    }
-  }, [leaderboardExpanded, overview]);
-
-  useEffect(() => {
     if (!overview) {
       return;
     }
@@ -453,9 +449,7 @@ export default function LeaderboardPanel() {
         if (!current.length) {
           return mainRows.slice(0, 5).map((row) => row.model_id);
         }
-        const filtered = current.filter((item) => allIds.includes(item));
-        const missing = allIds.filter((item) => !filtered.includes(item));
-        return missing.length ? [...filtered, ...missing] : filtered;
+        return current.filter((item) => allIds.includes(item));
       });
     }
 
@@ -688,7 +682,9 @@ export default function LeaderboardPanel() {
     }
   };
 
-  const showProgress = Boolean(status?.running || status?.upload_current);
+  const showProgress = Boolean(
+    status?.running || status?.upload_current || (status?.message && /comput|build|load/i.test(status.message)),
+  );
 
   const progressValue = useMemo(() => {
     if (!status?.total_models) {
@@ -715,7 +711,7 @@ export default function LeaderboardPanel() {
 
   return (
     <Stack spacing={3.2}>
-      <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 }, order: 6, mt: 1.2 }}>
+      <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 }, order: 6, mt: 2.8 }}>
         <Stack spacing={2}>
           <SectionTitle title="Leaderboard description" />
 
@@ -839,7 +835,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 1, mt: 0 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 1 }}>
         <Stack spacing={2}>
           <Stack
             direction={{ xs: "column", lg: "row" }}
@@ -896,7 +892,9 @@ export default function LeaderboardPanel() {
               <Table className="metric-table main-metrics-table">
                 <TableHead>
                   <TableRow>
-                    <TableCell rowSpan={2}>Rank</TableCell>
+                    <TableCell rowSpan={2} sx={{ width: 56, minWidth: 56 }}>
+                      Rank
+                    </TableCell>
                     <TableCell rowSpan={2}>Model</TableCell>
                     <TableCell colSpan={4} align="center">
                       Exon
@@ -919,7 +917,7 @@ export default function LeaderboardPanel() {
                 <TableBody>
                   {mainRows.map((row, index) => (
                     <TableRow key={row.model_id}>
-                      <TableCell>{index + 1}</TableCell>
+                      <TableCell sx={{ width: 56, minWidth: 56 }}>{index + 1}</TableCell>
                       <TableCell>
                         <Stack direction="row" spacing={1} alignItems="center">
                           <Typography fontWeight={760}>{row.display_name}</Typography>
@@ -1119,7 +1117,9 @@ export default function LeaderboardPanel() {
               <Table className="metric-table full-metrics-table">
                 <TableHead>
                   <TableRow>
-                    <TableCell rowSpan={2}>Model</TableCell>
+                    <TableCell rowSpan={2} sx={{ width: 280, minWidth: 280 }}>
+                      Model
+                    </TableCell>
                     <TableCell colSpan={4} align="center">
                       Interval level
                     </TableCell>
@@ -1147,7 +1147,7 @@ export default function LeaderboardPanel() {
                 <TableBody>
                   {fullMetrics.rows.map((row) => (
                     <TableRow key={row.model_id}>
-                      <TableCell>
+                      <TableCell sx={{ width: 280, minWidth: 280 }}>
                         <Stack direction="row" spacing={1} alignItems="center">
                           <Typography fontWeight={760}>{row.display_name}</Typography>
                         </Stack>
