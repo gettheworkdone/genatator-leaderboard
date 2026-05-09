@@ -831,6 +831,7 @@ export default function LeaderboardPanel() {
 
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
               <FormControlLabel
+                sx={{ mr: { sm: 0.6 } }}
                 control={<Checkbox checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />}
                 label="Use strand"
               />
