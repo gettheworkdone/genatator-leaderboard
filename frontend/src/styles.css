@@ -381,3 +381,15 @@ body::after {
 .chart-info-chip {
   font-weight: 700;
 }
+
+
+/* Safety: ensure only one strand toggle is visible in Main metrics controls */
+.main-metrics-controls input[type="checkbox"]:not(:first-of-type) {
+  display: none !important;
+}
+.main-metrics-controls .MuiCheckbox-root:not(:first-of-type) {
+  display: none !important;
+}
+.main-metrics-controls .MuiTypography-root:not(:first-of-type) {
+  display: none;
+}
