@@ -261,6 +261,7 @@ export default function LeaderboardPanel() {
 
   const [leaderboardExpanded, setLeaderboardExpanded] = useState(false);
   const uploadInputRef = useRef(null);
+  const mainMetricsControlsRef = useRef(null);
 
   const selectedK = useMemo(() => {
     const parsed = Number(selectedKInput);
@@ -411,6 +412,20 @@ export default function LeaderboardPanel() {
       window.MathJax.typesetPromise();
     }
   }, [leaderboardExpanded, overview]);
+
+  useEffect(() => {
+    const root = mainMetricsControlsRef.current;
+    if (!root) return;
+    const checkboxes = root.querySelectorAll('[role="checkbox"]');
+    checkboxes.forEach((node, index) => {
+      const el = node;
+      el.style.display = index === 0 ? "" : "none";
+      if (index > 0) {
+        const label = el.closest("label");
+        if (label) label.style.display = "none";
+      }
+    });
+  }, [useStrand, sortMetric, selectedKInput]);
 
   useEffect(() => {
     if (!overview) {
@@ -829,7 +844,7 @@ export default function LeaderboardPanel() {
               subtitle="The table is evaluated at a user-selected tolerance k and shows both exon and CDS branches simultaneously."
             />
 
-            <Stack className="main-metrics-controls" direction={{ xs: "column", sm: "row" }} spacing={1.2}>
+            <Stack ref={mainMetricsControlsRef} className="main-metrics-controls" direction={{ xs: "column", sm: "row" }} spacing={1.2}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.6, mr: { sm: 0.6 } }}>
                 <Checkbox checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />
                 <Typography>Use strand</Typography>
