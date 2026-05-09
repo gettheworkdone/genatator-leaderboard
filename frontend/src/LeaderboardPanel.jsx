@@ -419,10 +419,10 @@ export default function LeaderboardPanel() {
     const checkboxes = root.querySelectorAll('[role="checkbox"]');
     checkboxes.forEach((node, index) => {
       const el = node;
-      el.style.display = index === 0 ? "" : "none";
       if (index > 0) {
-        const label = el.closest("label");
-        if (label) label.style.display = "none";
+        el.style.display = "none";
+      } else {
+        el.style.display = "";
       }
     });
   }, [useStrand, sortMetric, selectedKInput]);
@@ -844,9 +844,9 @@ export default function LeaderboardPanel() {
               subtitle="The table is evaluated at a user-selected tolerance k and shows both exon and CDS branches simultaneously."
             />
 
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
-              <Box component="label" sx={{ display: "flex", alignItems: "center", gap: 0.9, mr: { sm: 0.6 }, cursor: "pointer" }}>
-                <input type="checkbox" checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />
+            <Stack ref={mainMetricsControlsRef} direction={{ xs: "column", sm: "row" }} spacing={1.2}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.6, mr: { sm: 0.6 } }}>
+                <Checkbox checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />
                 <Typography>Use strand</Typography>
               </Box>
 
