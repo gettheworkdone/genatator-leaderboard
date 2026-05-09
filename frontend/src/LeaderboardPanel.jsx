@@ -839,16 +839,18 @@ export default function LeaderboardPanel() {
             justifyContent="space-between"
             alignItems={{ xs: "stretch", lg: "center" }}
           >
-            <SectionTitle
-              title="Main metrics"
-              subtitle="The table is evaluated at a user-selected tolerance k and shows both exon and CDS branches simultaneously."
-            />
-
-            <Stack ref={mainMetricsControlsRef} direction={{ xs: "column", sm: "row" }} spacing={1.2}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.6, mr: { sm: 0.6 } }}>
+            <Stack spacing={0.6}>
+              <SectionTitle
+                title="Main metrics"
+                subtitle="The table is evaluated at a user-selected tolerance k and shows both exon and CDS branches simultaneously."
+              />
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.6 }}>
                 <Checkbox checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />
                 <Typography>Use strand</Typography>
               </Box>
+            </Stack>
+
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
 
               <TextField
                 label="Active k"
