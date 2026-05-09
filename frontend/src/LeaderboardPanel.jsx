@@ -830,6 +830,11 @@ export default function LeaderboardPanel() {
             />
 
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
+              <FormControlLabel
+                control={<Checkbox checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />}
+                label="Use strand"
+              />
+
               <TextField
                 label="Active k"
                 type="number"
@@ -881,7 +886,7 @@ export default function LeaderboardPanel() {
                     <TableCell rowSpan={2} sx={{ width: 56, minWidth: 56 }}>
                       Rank
                     </TableCell>
-                    <TableCell rowSpan={2} sx={{ minWidth: 270 }}>Model</TableCell>
+                    <TableCell rowSpan={2} sx={{ width: 280, minWidth: 280 }}>Model</TableCell>
                     <TableCell colSpan={4} align="center">
                       Exon
                     </TableCell>
@@ -1017,7 +1022,7 @@ export default function LeaderboardPanel() {
                 SelectProps={{
                   MenuProps: {
                     PaperProps: {
-                      sx: { backgroundColor: "#f8fbfa", backdropFilter: "none" },
+                      sx: { backgroundColor: "#ffffff", opacity: 1, backdropFilter: "none" },
                     },
                   },
                 }}
