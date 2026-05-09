@@ -829,7 +829,7 @@ export default function LeaderboardPanel() {
               subtitle="The table is evaluated at a user-selected tolerance k and shows both exon and CDS branches simultaneously."
             />
 
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
+            <Stack className="main-metrics-controls" direction={{ xs: "column", sm: "row" }} spacing={1.2}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.6, mr: { sm: 0.6 } }}>
                 <Checkbox checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />
                 <Typography>Use strand</Typography>
