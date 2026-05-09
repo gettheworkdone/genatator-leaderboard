@@ -8,7 +8,9 @@ import {
   Box,
   Button,
   Chip,
+  Checkbox,
   CircularProgress,
+  FormControlLabel,
   InputAdornment,
   LinearProgress,
   MenuItem,
@@ -259,6 +261,7 @@ export default function LeaderboardPanel() {
 
   const [leaderboardExpanded, setLeaderboardExpanded] = useState(false);
   const uploadInputRef = useRef(null);
+  const mainMetricsControlsRef = useRef(null);
 
   const selectedK = useMemo(() => {
     const parsed = Number(selectedKInput);
@@ -411,6 +414,20 @@ export default function LeaderboardPanel() {
   }, [leaderboardExpanded, overview]);
 
   useEffect(() => {
+    const root = mainMetricsControlsRef.current;
+    if (!root) return;
+    const checkboxes = root.querySelectorAll('[role="checkbox"]');
+    checkboxes.forEach((node, index) => {
+      const el = node;
+      el.style.display = index === 0 ? "" : "none";
+      if (index > 0) {
+        const label = el.closest("label");
+        if (label) label.style.display = "none";
+      }
+    });
+  }, [useStrand, sortMetric, selectedKInput]);
+
+  useEffect(() => {
     if (!overview) {
       return;
     }
@@ -450,6 +467,7 @@ export default function LeaderboardPanel() {
       params.set("model_ids", fullMetricsModelIds.join(","));
     }
 
+    params.set("use_strand", useStrand ? "true" : "false");
     fetch(`/api/leaderboard/full-metrics?${params.toString()}`)
       .then((response) => response.json())
       .then((payload) => {
@@ -850,6 +868,11 @@ export default function LeaderboardPanel() {
                 }}
                 inputProps={{ min: 0, max: 500 }}
                 sx={{ width: 120, ...uniformFieldSx }}
+              />
+
+              <FormControlLabel
+                control={<Checkbox checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />}
+                label="Use strand"
               />
 
               <TextField
