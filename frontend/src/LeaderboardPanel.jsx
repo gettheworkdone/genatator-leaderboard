@@ -887,7 +887,7 @@ export default function LeaderboardPanel() {
                   setSelectedKInput(`${Math.max(0, Math.min(parsed, 500))}`);
                 }}
                 inputProps={{ min: 0, max: 500 }}
-                sx={{ width: 120, ml: 1.6, ...uniformFieldSx }}
+                sx={{ width: 120, ml: { sm: 1.2 }, ...uniformFieldSx }}
               />
 
               <TextField
