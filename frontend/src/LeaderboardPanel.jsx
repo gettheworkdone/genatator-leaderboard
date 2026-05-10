@@ -179,14 +179,14 @@ const LEADERBOARD_DESCRIPTION_HTML = String.raw`
 </section>
 `;
 
-function SectionTitle({ icon = null, title, subtitle = null }) {
+function SectionTitle({ icon = null, title, subtitle = null, constrainSubtitle = true }) {
   return (
     <Stack spacing={0.6}>
       <Stack direction="row" spacing={1} alignItems="center">
         {icon}
         <Typography variant="h5">{title}</Typography>
       </Stack>
-      {subtitle ? <Typography color="text.secondary" sx={{ fontSize: "0.8rem", lineHeight: 1.45 }}>{subtitle}</Typography> : null}
+      {subtitle ? <Typography color="text.secondary" sx={{ fontSize: "0.8rem", lineHeight: 1.45, maxWidth: constrainSubtitle ? { xs: "100%", md: "50%" } : "none" }}>{subtitle}</Typography> : null}
     </Stack>
   );
 }
@@ -832,6 +832,7 @@ export default function LeaderboardPanel() {
           <SectionTitle
             title="Temporary submission"
             subtitle="Upload your own prediction GFF, give it a model name, and compare it with the leaderboard models for the current browser session."
+            constrainSubtitle={false}
           />
 
           <Typography color="text.secondary" sx={{ fontSize: "0.8rem", lineHeight: 1.45 }}>
