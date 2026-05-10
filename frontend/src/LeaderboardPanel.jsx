@@ -870,7 +870,7 @@ export default function LeaderboardPanel() {
                 <Checkbox checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />
               </Box>
 
-              <Box sx={{ width: { xs: 0, sm: 34 }, flex: "0 0 auto" }} />
+              <Box sx={{ width: { xs: 0, sm: 17 }, flex: "0 0 auto" }} />
 
               <TextField
                 label="Active k"
