@@ -887,12 +887,7 @@ export default function LeaderboardPanel() {
                   setSelectedKInput(`${Math.max(0, Math.min(parsed, 500))}`);
                 }}
                 inputProps={{ min: 0, max: 500 }}
-                sx={{ width: 120, ml: { sm: 1.8 }, ...uniformFieldSx }}
-              />
-
-              <FormControlLabel
-                control={<Checkbox checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />}
-                label="Use strand"
+                sx={{ width: 120, ml: 1.6, ...uniformFieldSx }}
               />
 
               <TextField
