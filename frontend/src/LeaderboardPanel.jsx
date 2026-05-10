@@ -420,9 +420,9 @@ export default function LeaderboardPanel() {
     checkboxRoots.forEach((el, idx) => {
       el.style.display = idx === 0 ? "" : "none";
     });
-    const labels = root.querySelectorAll('.use-strand-control + .MuiTypography-root, .use-strand-control ~ .MuiTypography-root');
-    labels.forEach((el, idx) => {
-      if (idx > 0) el.style.display = "none";
+    const textNodes = Array.from(root.querySelectorAll('*')).filter((el) => el.textContent?.trim() === "Use strand");
+    textNodes.forEach((el, idx) => {
+      el.style.display = idx === 0 ? "" : "none";
     });
   }, [useStrand, sortMetric, selectedKInput]);
 
