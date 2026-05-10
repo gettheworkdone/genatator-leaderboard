@@ -186,7 +186,7 @@ function SectionTitle({ icon = null, title, subtitle = null }) {
         {icon}
         <Typography variant="h5">{title}</Typography>
       </Stack>
-      {subtitle ? <Typography color="text.secondary">{subtitle}</Typography> : null}
+      {subtitle ? <Typography color="text.secondary" sx={{ fontSize: "0.67rem", lineHeight: 1.45 }}>{subtitle}</Typography> : null}
     </Stack>
   );
 }
