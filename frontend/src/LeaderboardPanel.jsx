@@ -892,7 +892,20 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 1, mt: 0 }}>
+
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 0, mt: 0 }}>
+        <Stack spacing={1.4}>
+          <SectionTitle title="TLDR" />
+          <Typography color="text.secondary" sx={{ fontSize: "0.92rem", lineHeight: 1.55 }}>
+            Tiberius is the strongest model for recovering CDS regions in mRNA genes. GENATATOR is strongest for
+            recovering mRNA UTRs, detecting lncRNA genes, and finding multiple transcript isoforms for the same gene.
+            For the most robust annotation, run both Tiberius and GENATATOR, then use the intersection of the
+            transcripts they recover.
+          </Typography>
+        </Stack>
+      </Paper>
+
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 1, mt: 3.2 }}>
         <Stack spacing={2}>
           <Stack
             direction={{ xs: "column", lg: "row" }}
