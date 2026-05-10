@@ -382,14 +382,8 @@ body::after {
   font-weight: 700;
 }
 
-
-/* Safety: ensure only one strand toggle is visible in Main metrics controls */
-.main-metrics-controls input[type="checkbox"]:not(:first-of-type) {
+.main-metrics-right-controls [role="checkbox"],
+.main-metrics-right-controls .MuiCheckbox-root,
+.main-metrics-right-controls label {
   display: none !important;
-}
-.main-metrics-controls .MuiCheckbox-root:not(:first-of-type) {
-  display: none !important;
-}
-.main-metrics-controls .MuiTypography-root:not(:first-of-type) {
-  display: none;
 }

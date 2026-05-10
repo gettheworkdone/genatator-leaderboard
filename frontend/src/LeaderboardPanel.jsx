@@ -850,7 +850,7 @@ export default function LeaderboardPanel() {
               </Box>
             </Stack>
 
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
+            <Stack className="main-metrics-right-controls" direction={{ xs: "column", sm: "row" }} spacing={1.2}>
 
               <TextField
                 label="Active k"
