@@ -10,6 +10,7 @@ import {
   Chip,
   Checkbox,
   CircularProgress,
+  FormControlLabel,
   InputAdornment,
   LinearProgress,
   MenuItem,
@@ -473,6 +474,7 @@ export default function LeaderboardPanel() {
       params.set("model_ids", fullMetricsModelIds.join(","));
     }
 
+    params.set("use_strand", useStrand ? "true" : "false");
     fetch(`/api/leaderboard/full-metrics?${params.toString()}`)
       .then((response) => response.json())
       .then((payload) => {
@@ -876,6 +878,11 @@ export default function LeaderboardPanel() {
                 }}
                 inputProps={{ min: 0, max: 500 }}
                 sx={{ width: 120, ...uniformFieldSx }}
+              />
+
+              <FormControlLabel
+                control={<Checkbox checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />}
+                label="Use strand"
               />
 
               <TextField
