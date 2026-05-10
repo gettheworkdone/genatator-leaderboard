@@ -870,7 +870,7 @@ export default function LeaderboardPanel() {
                 <Checkbox checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />
               </Box>
 
-              <Box sx={{ width: { xs: 0, sm: 17 }, flex: "0 0 auto" }} />
+              <Box sx={{ width: { xs: 0, sm: 14 }, flex: "0 0 auto" }} />
 
               <TextField
                 label="Active k"
@@ -1077,6 +1077,7 @@ export default function LeaderboardPanel() {
             getOptionLabel={(option) => option.display_name}
             isOptionEqualToValue={(option, value) => option.model_id === value.model_id}
             onChange={(_, value) => setSelectedModels(value.map((item) => item.model_id))}
+            slotProps={{ paper: { sx: { backgroundColor: "#ffffff", opacity: 1, backdropFilter: "none" } } }}
             renderInput={(params) => <TextField {...params} label="Models shown on the graph" />}
           />
 
