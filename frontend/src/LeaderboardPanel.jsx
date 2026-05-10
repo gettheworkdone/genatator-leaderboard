@@ -862,7 +862,7 @@ export default function LeaderboardPanel() {
                   alignItems: "center",
                   gap: 0.6,
                   pr: 1.6,
-                  mr: 1.2,
+                  mr: 2.0,
                   borderRight: "1px solid rgba(15, 118, 110, 0.18)",
                 }}
               >
