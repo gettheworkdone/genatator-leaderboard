@@ -186,7 +186,7 @@ function SectionTitle({ icon = null, title, subtitle = null, constrainSubtitle =
         {icon}
         <Typography variant="h5">{title}</Typography>
       </Stack>
-      {subtitle ? <Typography color="text.secondary" sx={{ fontSize: "0.8rem", lineHeight: 1.45, maxWidth: constrainSubtitle ? { xs: "100%", md: "85%" } : "none" }}>{subtitle}</Typography> : null}
+      {subtitle ? <Typography color="text.secondary" sx={{ fontSize: "0.8rem", lineHeight: 1.45, maxWidth: constrainSubtitle ? { xs: "100%", md: "95%" } : "none" }}>{subtitle}</Typography> : null}
     </Stack>
   );
 }
@@ -1181,7 +1181,12 @@ export default function LeaderboardPanel() {
 
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 3, mt: 3.2 }}>
         <Stack spacing={2}>
-          <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
+          <Stack
+            direction={{ xs: "column", lg: "row" }}
+            justifyContent="space-between"
+            spacing={1.2}
+            alignItems={{ xs: "flex-start", lg: "flex-start" }}
+          >
             <SectionTitle
               title="Full metrics"
               subtitle="View the complete set of scores for the selected models at the active k. Use this panel when you want more detail than the Main metrics table provides."
@@ -1352,7 +1357,12 @@ export default function LeaderboardPanel() {
 
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 4, mt: 3.2 }}>
         <Stack spacing={2}>
-          <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
+          <Stack
+            direction={{ xs: "column", lg: "row" }}
+            justifyContent="space-between"
+            spacing={1.2}
+            alignItems={{ xs: "flex-start", lg: "flex-start" }}
+          >
             <SectionTitle
               title="Stratifier"
               subtitle="Check whether a model performs differently across groups such as transcript type, strand, or chromosome. Choose a model, a branch, and a grouping rule."
@@ -1436,7 +1446,12 @@ export default function LeaderboardPanel() {
 
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 5, mt: 3.2 }}>
         <Stack spacing={2}>
-          <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
+          <Stack
+            direction={{ xs: "column", lg: "row" }}
+            justifyContent="space-between"
+            spacing={1.2}
+            alignItems={{ xs: "flex-start", lg: "flex-start" }}
+          >
             <SectionTitle
               title="Detailed information"
               subtitle="Look up a ground-truth gene or transcript and see which model predictions recovered it. This panel is for checking individual biological examples, not only summary scores."
