@@ -870,7 +870,7 @@ export default function LeaderboardPanel() {
                 <Checkbox checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />
               </Box>
 
-              <Box sx={{ width: { xs: 0, sm: 14 }, flex: "0 0 auto" }} />
+              <Box sx={{ width: { xs: 0, sm: 12 }, flex: "0 0 auto" }} />
 
               <TextField
                 label="Active k"
@@ -1096,6 +1096,7 @@ export default function LeaderboardPanel() {
                 <XAxis dataKey="k" type="number" domain={[0, 500]} allowDecimals={false} ticks={CHART_AXIS_TICKS} />
                 <YAxis />
                 <Tooltip
+                  itemSorter={(item) => -Number(item?.value ?? -Infinity)}
                   formatter={(value) => {
                     const numeric = Number(value);
                     return Number.isFinite(numeric) ? numeric.toFixed(4) : "—";
