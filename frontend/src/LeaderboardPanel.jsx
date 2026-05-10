@@ -416,13 +416,21 @@ export default function LeaderboardPanel() {
   useEffect(() => {
     const root = mainControlsRowRef.current;
     if (!root) return;
-    const checkboxRoots = root.querySelectorAll('.MuiCheckbox-root');
-    checkboxRoots.forEach((el, idx) => {
-      el.style.display = idx === 0 ? "" : "none";
+    const primaryCheckbox = root.querySelector('.use-strand-control .MuiCheckbox-root');
+    const primaryLabel = root.querySelector('.use-strand-control .MuiTypography-root');
+    if (primaryCheckbox) primaryCheckbox.style.display = "";
+    if (primaryLabel) primaryLabel.style.display = "";
+
+    const allCheckboxes = root.querySelectorAll('.MuiCheckbox-root');
+    allCheckboxes.forEach((el) => {
+      if (el !== primaryCheckbox) el.style.display = 'none';
     });
-    const textNodes = Array.from(root.querySelectorAll('*')).filter((el) => el.textContent?.trim() === "Use strand");
-    textNodes.forEach((el, idx) => {
-      el.style.display = idx === 0 ? "" : "none";
+
+    const duplicateLabels = Array.from(root.querySelectorAll('.MuiTypography-root')).filter(
+      (el) => el !== primaryLabel && el.textContent?.trim() === 'Use strand',
+    );
+    duplicateLabels.forEach((el) => {
+      el.style.display = 'none';
     });
   }, [useStrand, sortMetric, selectedKInput]);
 
