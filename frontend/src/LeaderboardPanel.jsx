@@ -261,7 +261,7 @@ export default function LeaderboardPanel() {
 
   const [leaderboardExpanded, setLeaderboardExpanded] = useState(false);
   const uploadInputRef = useRef(null);
-  const mainMetricsControlsRef = useRef(null);
+  const mainControlsRowRef = useRef(null);
 
   const selectedK = useMemo(() => {
     const parsed = Number(selectedKInput);
@@ -414,16 +414,15 @@ export default function LeaderboardPanel() {
   }, [leaderboardExpanded, overview]);
 
   useEffect(() => {
-    const root = mainMetricsControlsRef.current;
+    const root = mainControlsRowRef.current;
     if (!root) return;
-    const checkboxes = root.querySelectorAll('[role="checkbox"]');
-    checkboxes.forEach((node, index) => {
-      const el = node;
-      if (index > 0) {
-        el.style.display = "none";
-      } else {
-        el.style.display = "";
-      }
+    const checkboxRoots = root.querySelectorAll('.MuiCheckbox-root');
+    checkboxRoots.forEach((el, idx) => {
+      el.style.display = idx === 0 ? "" : "none";
+    });
+    const labels = root.querySelectorAll('.use-strand-control + .MuiTypography-root, .use-strand-control ~ .MuiTypography-root');
+    labels.forEach((el, idx) => {
+      if (idx > 0) el.style.display = "none";
     });
   }, [useStrand, sortMetric, selectedKInput]);
 
@@ -846,9 +845,9 @@ export default function LeaderboardPanel() {
               />
             </Stack>
 
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
+            <Stack ref={mainControlsRowRef} direction={{ xs: "column", sm: "row" }} spacing={1.2}>
 
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.6 }}>
+              <Box className="use-strand-control" sx={{ display: "flex", alignItems: "center", gap: 0.6 }}>
                 <Checkbox checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />
                 <Typography>Use strand</Typography>
               </Box>
