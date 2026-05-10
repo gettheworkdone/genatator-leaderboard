@@ -855,9 +855,19 @@ export default function LeaderboardPanel() {
 
             <Stack ref={mainControlsRowRef} direction={{ xs: "column", sm: "row" }} spacing={1.2}>
 
-              <Box className="use-strand-control" sx={{ display: "flex", alignItems: "center", gap: 0.6 }}>
-                <Checkbox checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />
+              <Box
+                className="use-strand-control"
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.6,
+                  pr: 1.6,
+                  mr: 0.4,
+                  borderRight: "1px solid rgba(15, 118, 110, 0.18)",
+                }}
+              >
                 <Typography>Use strand</Typography>
+                <Checkbox checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />
               </Box>
 
               <TextField
