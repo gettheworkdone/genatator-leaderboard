@@ -71,9 +71,9 @@ class ModelBundle:
     model_id: str
     display_name: str
     temporary: bool
-    branch_results: dict[str, dict[int, dict[str, object]]]
-    stratifier: dict[str, dict[str, dict[str, dict[int, dict[str, object]]]]]
-    detailed: dict[str, dict[str, dict[str, object]]]
+    branch_results_by_strand: dict[bool, dict[str, dict[int, dict[str, object]]]]
+    stratifier_by_strand: dict[bool, dict[str, dict[str, dict[str, dict[int, dict[str, object]]]]]]
+    detailed_by_strand: dict[bool, dict[str, dict[str, dict[str, object]]]]
     prediction_index: dict[str, dict[str, object]]
     source_file: str | None = None
 
@@ -126,13 +126,14 @@ class LeaderboardService:
         self.predictions_dir = self.data_dir / "predictions"
         self.mapping_path = self.data_dir / "model_name_mapping.json"
         self._display_name_mapping: dict[str, Any] = {}
+        self._reference_mapping: dict[str, str] = {}
 
         self.evaluator = GeneLevelEvaluator()
         self._lock = threading.Lock()
         self._state = ServiceState()
         self._permanent_models: dict[str, ModelBundle] = {}
         self._temporary_models: dict[str, ModelBundle] = {}
-        self._ground_truth_indices: dict[str, dict[str, object]] = {}
+        self._ground_truth_indices_by_strand: dict[bool, dict[str, dict[str, object]]] = {}
         self._ground_truth_input: Path | pd.DataFrame = self.ground_truth_path
         self._initializer_started = False
         self._upload_queue: Queue[dict[str, object]] = Queue()
@@ -151,7 +152,7 @@ class LeaderboardService:
             if force:
                 self._permanent_models = {}
                 self._temporary_models = {}
-                self._ground_truth_indices = {}
+                self._ground_truth_indices_by_strand = {}
                 self._ground_truth_input = self.ground_truth_path
             self._initializer_started = True
             self._state = ServiceState(
@@ -169,11 +170,11 @@ class LeaderboardService:
         with self._lock:
             return self._state.to_dict()
 
-    def overview(self) -> dict[str, object]:
+    def overview(self, use_strand: bool = True) -> dict[str, object]:
         with self._lock:
             status = self._state.to_dict()
             models = [
-                self._serialize_model_overview(bundle)
+                self._serialize_model_overview(bundle, use_strand=use_strand)
                 for bundle in self._ordered_bundles_locked()
             ]
         return {
@@ -188,6 +189,7 @@ class LeaderboardService:
             ],
             "models": models,
             "source_repository_url": SOURCE_REPOSITORY_URL,
+            "default_use_strand": True,
         }
 
     def full_metrics(
@@ -195,9 +197,10 @@ class LeaderboardService:
         branch: str,
         k: int,
         model_ids: Optional[list[str]] = None,
+        use_strand: bool = True,
     ) -> dict[str, object]:
         bundle_list = self._selected_bundles(model_ids)
-        rows = [self._serialize_full_metric_row(bundle, branch, k) for bundle in bundle_list]
+        rows = [self._serialize_full_metric_row(bundle, branch, k, use_strand=use_strand) for bundle in bundle_list]
         return {"branch": branch, "k": int(k), "rows": rows}
 
     def stratifier(
@@ -206,9 +209,10 @@ class LeaderboardService:
         k: int,
         model_id: str,
         rule: str,
+        use_strand: bool = True,
     ) -> dict[str, object]:
         bundle = self._get_bundle(model_id)
-        stratifier_tree = bundle.stratifier.get(branch, {})
+        stratifier_tree = bundle.stratifier_by_strand[bool(use_strand)].get(branch, {})
         if rule not in stratifier_tree:
             raise KeyError(f"Stratification rule '{rule}' is not available for branch '{branch}'.")
         rows: list[dict[str, object]] = []
@@ -245,8 +249,9 @@ class LeaderboardService:
         query: str = "",
         page: int = 1,
         page_size: int = 25,
+        use_strand: bool = True,
     ) -> dict[str, object]:
-        index = self._ground_truth_indices.get(branch)
+        index = self._ground_truth_indices_by_strand.get(use_strand, {}).get(branch)
         if index is None:
             return {"branch": branch, "total": 0, "page": 1, "page_size": page_size, "items": []}
 
@@ -286,8 +291,9 @@ class LeaderboardService:
         gene_id: str,
         k: int,
         model_ids: Optional[list[str]] = None,
+        use_strand: bool = True,
     ) -> dict[str, object]:
-        index = self._ground_truth_indices.get(branch)
+        index = self._ground_truth_indices_by_strand.get(use_strand, {}).get(branch)
         if index is None or gene_id not in index["genes"]:
             raise KeyError(f"Ground-truth gene '{gene_id}' was not found for branch '{branch}'.")
 
@@ -299,7 +305,7 @@ class LeaderboardService:
             tx_id = transcript["transcript_id"]
             matches: list[dict[str, object]] = []
             for bundle in selected_models:
-                detail_entry = bundle.detailed.get(branch, {}).get(tx_id)
+                detail_entry = bundle.detailed_by_strand[bool(use_strand)].get(branch, {}).get(tx_id)
                 if detail_entry is None:
                     continue
                 interval_map = {
@@ -387,8 +393,9 @@ class LeaderboardService:
                 stage="loading-predictions",
                 message="Downloading permanent prediction files and model mapping.",
             )
-            files, mapping = self._prediction_files_and_mapping()
+            files, mapping, references = self._prediction_files_and_mapping()
             self._display_name_mapping = mapping
+            self._reference_mapping = references
 
             if not self.ground_truth_path.exists():
                 self._set_state(
@@ -407,15 +414,21 @@ class LeaderboardService:
                 stage="loading-ground-truth",
                 message="Loading ground-truth annotations and preparing branch-specific indices.",
             )
-            self._ground_truth_indices = {
+            shared_indices = {
                 "exon": self._build_ground_truth_index(
                     gene_biotypes=EXON_GENE_BIOTYPES,
                     transcript_types=EXON_TRANSCRIPT_TYPES,
+                    use_strand=True,
                 ),
                 "cds": self._build_ground_truth_index(
                     gene_biotypes=CDS_GENE_BIOTYPES,
                     transcript_types=CDS_TRANSCRIPT_TYPES,
+                    use_strand=True,
                 ),
+            }
+            self._ground_truth_indices_by_strand = {
+                True: shared_indices,
+                False: shared_indices,
             }
 
             self._set_state(
@@ -513,67 +526,72 @@ class LeaderboardService:
         temporary: bool,
         source_file: str | None,
     ) -> ModelBundle:
-        exon_result = self.evaluator.evaluate_gff_exon(
-            pred_gff=pred_gff,
-            true_gff=self._ground_truth_input,
-            k_values=DEFAULT_K_VALUES,
-            use_strand=USE_STRAND,
-            gene_biotypes=EXON_GENE_BIOTYPES,
-            transcript_types=EXON_TRANSCRIPT_TYPES,
-        )
-        cds_result = self.evaluator.evaluate_gff_cds(
-            pred_gff=pred_gff,
-            true_gff=self._ground_truth_input,
-            k_values=DEFAULT_K_VALUES,
-            use_strand=USE_STRAND,
-            gene_biotypes=CDS_GENE_BIOTYPES,
-            transcript_types=CDS_TRANSCRIPT_TYPES,
-        )
-        exon_result = self._compact_branch_result(exon_result)
-        cds_result = self._compact_branch_result(cds_result)
-
-        exon_stratifier = self.evaluator.build_stratifier(
-            branch_result=exon_result,
-            pred_gff=pred_gff,
-            true_gff=self._ground_truth_input,
-            use_strand=USE_STRAND,
-            gene_biotypes=EXON_GENE_BIOTYPES,
-            transcript_types=EXON_TRANSCRIPT_TYPES,
-        )
-        cds_stratifier = self.evaluator.build_stratifier(
-            branch_result=cds_result,
-            pred_gff=pred_gff,
-            true_gff=self._ground_truth_input,
-            use_strand=USE_STRAND,
-            gene_biotypes=CDS_GENE_BIOTYPES,
-            transcript_types=CDS_TRANSCRIPT_TYPES,
-        )
-
-        exon_detailed = self.evaluator.build_detailed_info(
-            branch_result=exon_result,
-            pred_gff=pred_gff,
-            true_gff=self._ground_truth_input,
-            use_strand=USE_STRAND,
-            gene_biotypes=EXON_GENE_BIOTYPES,
-            transcript_types=EXON_TRANSCRIPT_TYPES,
-        )
-        cds_detailed = self.evaluator.build_detailed_info(
-            branch_result=cds_result,
-            pred_gff=pred_gff,
-            true_gff=self._ground_truth_input,
-            use_strand=USE_STRAND,
-            gene_biotypes=CDS_GENE_BIOTYPES,
-            transcript_types=CDS_TRANSCRIPT_TYPES,
-        )
+        branch_results_by_strand = {}
+        stratifier_by_strand = {}
+        detailed_by_strand = {}
+        for use_strand in (True, False):
+            exon_result = self.evaluator.evaluate_gff_exon(
+                pred_gff=pred_gff,
+                true_gff=self._ground_truth_input,
+                k_values=DEFAULT_K_VALUES,
+                use_strand=use_strand,
+                gene_biotypes=EXON_GENE_BIOTYPES,
+                transcript_types=EXON_TRANSCRIPT_TYPES,
+            )
+            cds_result = self.evaluator.evaluate_gff_cds(
+                pred_gff=pred_gff,
+                true_gff=self._ground_truth_input,
+                k_values=DEFAULT_K_VALUES,
+                use_strand=use_strand,
+                gene_biotypes=CDS_GENE_BIOTYPES,
+                transcript_types=CDS_TRANSCRIPT_TYPES,
+            )
+            exon_result = self._compact_branch_result(exon_result)
+            cds_result = self._compact_branch_result(cds_result)
+            exon_stratifier = self.evaluator.build_stratifier(
+                branch_result=exon_result,
+                pred_gff=pred_gff,
+                true_gff=self._ground_truth_input,
+                use_strand=use_strand,
+                gene_biotypes=EXON_GENE_BIOTYPES,
+                transcript_types=EXON_TRANSCRIPT_TYPES,
+            )
+            cds_stratifier = self.evaluator.build_stratifier(
+                branch_result=cds_result,
+                pred_gff=pred_gff,
+                true_gff=self._ground_truth_input,
+                use_strand=use_strand,
+                gene_biotypes=CDS_GENE_BIOTYPES,
+                transcript_types=CDS_TRANSCRIPT_TYPES,
+            )
+            exon_detailed = self.evaluator.build_detailed_info(
+                branch_result=exon_result,
+                pred_gff=pred_gff,
+                true_gff=self._ground_truth_input,
+                use_strand=use_strand,
+                gene_biotypes=EXON_GENE_BIOTYPES,
+                transcript_types=EXON_TRANSCRIPT_TYPES,
+            )
+            cds_detailed = self.evaluator.build_detailed_info(
+                branch_result=cds_result,
+                pred_gff=pred_gff,
+                true_gff=self._ground_truth_input,
+                use_strand=use_strand,
+                gene_biotypes=CDS_GENE_BIOTYPES,
+                transcript_types=CDS_TRANSCRIPT_TYPES,
+            )
+            branch_results_by_strand[use_strand] = {"exon": exon_result, "cds": cds_result}
+            stratifier_by_strand[use_strand] = {"exon": exon_stratifier, "cds": cds_stratifier}
+            detailed_by_strand[use_strand] = {"exon": exon_detailed, "cds": cds_detailed}
 
         prediction_index = self._build_prediction_index(pred_gff)
         return ModelBundle(
             model_id=model_id,
             display_name=display_name,
             temporary=temporary,
-            branch_results={"exon": exon_result, "cds": cds_result},
-            stratifier={"exon": exon_stratifier, "cds": cds_stratifier},
-            detailed={"exon": exon_detailed, "cds": cds_detailed},
+            branch_results_by_strand=branch_results_by_strand,
+            stratifier_by_strand=stratifier_by_strand,
+            detailed_by_strand=detailed_by_strand,
             prediction_index=prediction_index,
             source_file=source_file,
         )
@@ -596,6 +614,7 @@ class LeaderboardService:
         self,
         gene_biotypes: Iterable[str],
         transcript_types: Iterable[str],
+        use_strand: bool,
     ) -> dict[str, object]:
         gt_df = self.evaluator._read_gff(self._ground_truth_input)
         normalized_gene_biotypes = self.evaluator._normalize_string_filter(gene_biotypes)
@@ -605,12 +624,12 @@ class LeaderboardService:
             gene_biotypes=normalized_gene_biotypes,
             transcript_types=normalized_transcript_types,
         )
-        true_tx = self.evaluator._true_rows_to_transcripts(true_rows, use_strand=USE_STRAND)
+        true_tx = self.evaluator._true_rows_to_transcripts(true_rows, use_strand=use_strand)
         true_parts = self.evaluator._extract_transcript_parts(
             gt_df,
             true_rows,
             id_col="transcript_id_final",
-            use_strand=USE_STRAND,
+            use_strand=use_strand,
         )
 
         type_map = {
@@ -693,29 +712,32 @@ class LeaderboardService:
     # Serializers
     # ------------------------------------------------------------------
 
-    def _serialize_model_overview(self, bundle: ModelBundle) -> dict[str, object]:
-        curves = {branch: self._branch_curves(bundle.branch_results[branch]) for branch in BRANCHES}
+    def _serialize_model_overview(self, bundle: ModelBundle, use_strand: bool = True) -> dict[str, object]:
+        branch_results = bundle.branch_results_by_strand[bool(use_strand)]
+        curves = {branch: self._branch_curves(branch_results[branch]) for branch in BRANCHES}
         metrics_at_default_k = {
-            branch: self._main_metrics_at_k(bundle.branch_results[branch], DEFAULT_K)
+            branch: self._main_metrics_at_k(branch_results[branch], DEFAULT_K)
             for branch in BRANCHES
         }
         return {
             "model_id": bundle.model_id,
             "display_name": bundle.display_name,
+            "reference_url": self._reference_url_for_bundle(bundle),
             "temporary": bundle.temporary,
             "source_file": bundle.source_file,
             "metrics_at_default_k": metrics_at_default_k,
             "curves": curves,
         }
 
-    def _serialize_full_metric_row(self, bundle: ModelBundle, branch: str, k: int) -> dict[str, object]:
-        payload = bundle.branch_results[branch][int(k)]
+    def _serialize_full_metric_row(self, bundle: ModelBundle, branch: str, k: int, use_strand: bool = True) -> dict[str, object]:
+        payload = bundle.branch_results_by_strand[bool(use_strand)][branch][int(k)]
         interval_payload = payload["interval-level"]
         segmentation_payload = payload["segmentation-level"]
         part_payload = payload["part-level"]
         return {
             "model_id": bundle.model_id,
             "display_name": bundle.display_name,
+            "reference_url": self._reference_url_for_bundle(bundle),
             "temporary": bundle.temporary,
             "interval_precision": interval_payload["precision"],
             "interval_recall": interval_payload["recall"],
@@ -752,16 +774,25 @@ class LeaderboardService:
 
     def _serialize_temporary_preview(self, bundle: ModelBundle) -> dict[str, object]:
         full_by_branch: dict[str, dict[int, dict[str, object]]] = {}
-        for branch in BRANCHES:
-            per_k: dict[int, dict[str, object]] = {}
-            for k in DEFAULT_K_VALUES:
-                per_k[int(k)] = self._serialize_full_metric_row(bundle, branch=branch, k=int(k))
-            full_by_branch[branch] = per_k
+        full_by_strand: dict[str, dict[str, dict[int, dict[str, object]]]] = {}
+        for use_strand in (True, False):
+            strand_key = "true" if use_strand else "false"
+            full_by_strand[strand_key] = {}
+            for branch in BRANCHES:
+                per_k: dict[int, dict[str, object]] = {}
+                for k in DEFAULT_K_VALUES:
+                    per_k[int(k)] = self._serialize_full_metric_row(bundle, branch=branch, k=int(k), use_strand=use_strand)
+                full_by_strand[strand_key][branch] = per_k
+                if use_strand:
+                    full_by_branch[branch] = per_k
         return {
-            "model": self._serialize_model_overview(bundle),
+            "model": self._serialize_model_overview(bundle, use_strand=True),
             "full_metrics": full_by_branch,
-            "stratifier": bundle.stratifier,
-            "detailed": bundle.detailed,
+            "full_metrics_by_strand": full_by_strand,
+            "stratifier_by_strand": bundle.stratifier_by_strand,
+            "detailed_by_strand": bundle.detailed_by_strand,
+            "stratifier": bundle.stratifier_by_strand[True],
+            "detailed": bundle.detailed_by_strand[True],
             "prediction_index": bundle.prediction_index,
         }
 
@@ -769,11 +800,11 @@ class LeaderboardService:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _prediction_files_and_mapping(self) -> tuple[list[Path], dict[str, Any]]:
-        remote_files, remote_mapping = self._sync_predictions_repo()
+    def _prediction_files_and_mapping(self) -> tuple[list[Path], dict[str, Any], dict[str, str]]:
+        remote_files, remote_mapping, remote_references = self._sync_predictions_repo()
         if remote_files:
-            return remote_files, remote_mapping
-        return self._local_prediction_files(), self._local_mapping()
+            return remote_files, remote_mapping, remote_references
+        return self._local_prediction_files(), self._local_mapping(), {}
 
     def _local_prediction_files(self) -> list[Path]:
         if not self.predictions_dir.exists():
@@ -792,7 +823,7 @@ class LeaderboardService:
             return json.loads(self.mapping_path.read_text(encoding="utf-8"))
         return {}
 
-    def _sync_predictions_repo(self) -> tuple[list[Path], dict[str, Any]]:
+    def _sync_predictions_repo(self) -> tuple[list[Path], dict[str, Any], dict[str, str]]:
         try:
             self.external_dir.mkdir(parents=True, exist_ok=True)
             if self.pred_repo_dir.exists():
@@ -823,6 +854,15 @@ class LeaderboardService:
                         mapping = loaded
                         break
 
+            references: dict[str, str] = {}
+            references_path = self.pred_repo_dir / "references.json"
+            if references_path.exists():
+                loaded_references = json.loads(references_path.read_text(encoding="utf-8"))
+                if isinstance(loaded_references, dict):
+                    for key, value in loaded_references.items():
+                        if isinstance(value, str) and value.strip():
+                            references[Path(str(key)).stem] = value.strip()
+
             valid_suffixes = {".gff", ".gff3", ".txt", ".gtf"}
             files = sorted(
                 [path for path in predictions_src_dir.iterdir() if path.is_file() and path.suffix.lower() in valid_suffixes],
@@ -831,9 +871,9 @@ class LeaderboardService:
             normalized_map: dict[str, Any] = {}
             for key, value in mapping.items():
                 normalized_map[Path(str(key)).stem] = value
-            return files, normalized_map
+            return files, normalized_map, references
         except Exception:
-            return [], {}
+            return [], {}, {}
 
     def _display_name_for_path(self, path: Path) -> str:
         mapping = self._display_name_mapping or self._local_mapping()
@@ -850,6 +890,17 @@ class LeaderboardService:
             if isinstance(value, dict) and isinstance(value.get("display_name"), str):
                 return value["display_name"]
         return path.stem.replace("_", " ")
+
+    def _reference_url_for_bundle(self, bundle: ModelBundle) -> str | None:
+        if bundle.temporary:
+            return None
+        candidates = [bundle.model_id, bundle.display_name]
+        if bundle.source_file:
+            candidates.extend([Path(bundle.source_file).stem, Path(bundle.source_file).name])
+        for key in candidates:
+            if key in self._reference_mapping:
+                return self._reference_mapping[key]
+        return None
 
     def _canonical_transcript_type(self, value: str) -> str:
         normalized = value.strip().lower()
