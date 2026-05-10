@@ -186,7 +186,7 @@ function SectionTitle({ icon = null, title, subtitle = null, constrainSubtitle =
         {icon}
         <Typography variant="h5">{title}</Typography>
       </Stack>
-      {subtitle ? <Typography color="text.secondary" sx={{ fontSize: "0.8rem", lineHeight: 1.45, maxWidth: constrainSubtitle ? { xs: "100%", md: "95%" } : "none" }}>{subtitle}</Typography> : null}
+      {subtitle ? <Typography color="text.secondary" sx={{ fontSize: "0.8rem", lineHeight: 1.45, maxWidth: constrainSubtitle ? { xs: "100%", md: "105%" } : "none" }}>{subtitle}</Typography> : null}
     </Stack>
   );
 }
