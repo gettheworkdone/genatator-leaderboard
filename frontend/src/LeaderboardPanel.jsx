@@ -79,62 +79,106 @@ const SORT_METRICS = [
 ];
 
 const LEADERBOARD_DESCRIPTION_HTML = String.raw`
+<section id="leaderboard-description"> 
+  <h2>Leaderboard description</h2>
+
   <p>
-    The leaderboard is meant to help you read the metric in stages, from a quick overview to transcript-level evidence.
-    The first panel, <strong>Temporary submission</strong>, lets you upload a prediction GFF and give it a model name for
-    the current browser session. The uploaded file is evaluated on demand under the same rules as the permanent entries,
-    appears in the tables and plots for that session, and disappears after refresh. This makes it easy to compare a new model
-    without changing the permanent ranking.
+    This leaderboard compares annotation models on human chromosome 20 (NC_060944.1) from the T2T
+    genome assembly GCF_009914755.1. The evaluation is restricted to mRNA and lncRNA genes and measures
+    how well each model recovers the transcripts of the evaluated genes. All files required for the leaderboard
+    evaluation are included in this repository. The page is organized from a compact summary to more detailed
+    biological context, so you can first compare models quickly and then inspect where the differences come from.
   </p>
 
   <p>
-    The next place to look is <strong>Main metrics</strong>. This is the compact overview of the most important quantities,
-    and it shows the exon and CDS branches side by side at the same active tolerance \(k\). The control
-    <strong>Active k</strong> sets the boundary tolerance currently used in the table, and <strong>Sort rows</strong> tells the
-    table which score should define the ordering. Under each branch, the column <strong>F1 w/o seg.</strong> means
-    interval-level F1 before the structural filter is applied. The column <strong>MI w/o seg.</strong> means multi-isoform
-    recovery at the same interval level. The column <strong>F1 with seg.</strong> means F1 after interval-matched pairs are
-    additionally required to pass the segmentation check. The column <strong>MI with seg.</strong> is the corresponding
-    multi-isoform count after that same structural filter. Read the <strong>Exon</strong> side as recovery of transcript
-    architecture, and the <strong>CDS</strong> side as recovery of coding structure.
+    The first panel, <strong>Main metrics</strong>, gives the fastest overview. You can specify the active tolerance
+    <strong>k</strong>, and all metrics across the leaderboard are updated to that same value. Here, <strong>k</strong>
+    is the allowed deviation, in base pairs, between predicted and reference transcript boundaries. In this context,
+    transcript start means the first transcribed nucleotide, and transcript end means the last transcribed nucleotide.
+    These positions are biologically less sharply defined than splice sites because transcription initiation and
+    termination can vary across molecules, while annotations represent them as fixed coordinates. Therefore,
+    smaller k values require more precise transcript boundary recovery, while larger k values allow more tolerant
+    matching.
   </p>
 
   <p>
-    If you want to see how a score changes as the tolerance varies, use the curve view on the page together with Main metrics.
-    That is the fastest way to understand whether a model is precise already at small \(k\) or improves only when the
-    matching rule becomes more permissive. Drag your mouse over the curve to inspect values at different tolerances, and use
-    that operating point to interpret the tables below.
+    The Main metrics table shows the <strong>exon</strong> and <strong>CDS</strong> branches side by side. The exon
+    branch measures recovery of transcript structure for mRNA and lncRNA genes. For mRNA transcripts, this
+    includes UTR exons as well as coding exons. The CDS branch focuses only on the coding sequence structure
+    of mRNA transcripts. In other words, the exon side tells you how well a model recovers the full transcribed
+    exon structure, while the CDS side tells you how well it recovers the protein-coding structure.
   </p>
 
   <p>
-    The <strong>Full metrics</strong> panel expands the summary at the currently active \(k\). The branch tabs switch between
-    exon and CDS views. Inside the table, the block <strong>Interval level</strong> reports
-    <strong>Precision</strong>, <strong>Recall</strong>, <strong>F1</strong>, and <strong>MI</strong> exactly as defined in the
-    metric description. The block <strong>Segmentation level</strong> reports the same four quantities after the structural
-    filter has been applied. The block <strong>Exact part level</strong> reports part-level
-    <strong>Precision</strong>, <strong>Recall</strong>, and <strong>F1</strong> for pooled unique exon intervals in the exon branch
-    or pooled unique CDS intervals in the CDS branch. This panel is where you go when the summary table tells you that two
-    models differ and you want to see whether the difference comes from prediction purity, gene recovery, structural fidelity,
-    isoform recovery, or exact part detection.
+    Under each branch, <strong>F1 w/o seg.</strong> is the interval-level F1 score before checking internal exon or
+    CDS structure. Conceptually, this is similar to comparing BED-like intervals that contain only transcript
+    starts and ends. It asks whether the predicted transcript or coding interval is placed in the right genomic
+    region, without asking whether the internal exon or CDS chain is correct. <strong>MI w/o seg.</strong> is the
+    corresponding multi-isoform count at this interval level. <strong>F1 with seg.</strong> is stricter. After a
+    prediction is matched by interval, it must also pass the segmentation check. This score asks whether the model
+    not only found the right region, but also reconstructed the relevant exon or CDS structure.
+    <strong>MI with seg.</strong> is the multi-isoform count after the same structural check. You can also use
+    <strong>Sort rows</strong> to rank models by the metric you care about most.
   </p>
 
   <p>
-    The <strong>Stratifier</strong> panel answers a different question: where does a model perform well or poorly inside the
-    benchmark? You choose a <strong>Model</strong>, a biologically meaningful grouping <strong>Rule</strong>, a branch, and an
-    active \(k\). The rows then correspond to the selected groups, such as transcript type, strand, or chromosome. The
-    columns <strong>Interval F1</strong> and <strong>Interval MI</strong> are the interval-level scores within that subset. The
-    columns <strong>Segmentation F1</strong> and <strong>Segmentation MI</strong> are the corresponding scores after the
-    segmentation filter. The column <strong>Exact part F1</strong> reports pooled exact exon or CDS recovery within the same
-    subset. This panel is useful when a model looks strong on average but behaves unevenly across biological categories.
+    The <strong>Use strand</strong> option controls whether strand information is used during matching. When it is
+    enabled, a prediction must match the reference on the same chromosome, coordinates, and strand. This is the
+    strictest setting for models that report strand. When it is disabled, strand is ignored during matching. This is
+    useful for models that do not return strand information in their predictions, such as SegmentNT or NTv3,
+    because otherwise they would be penalized for information they never provide.
   </p>
 
   <p>
-    The last panel, <strong>Detailed information</strong>, moves from model summaries to individual reference genes and
-    transcripts. It starts from the ground-truth gene list. Once you open a gene, you can inspect its annotated transcripts and
-    their basic attributes. Once you open a transcript, you can see which predictions matched it and the smallest tolerance
-    \(k\) at which each match appears. This is the panel to use when you want to verify why a model gained or lost score on
-    a particular biological example rather than only reading the aggregate numbers.
+    The next panel, <strong>Metric curves</strong>, shows how a selected metric changes across different values of
+    <strong>k</strong>. This is useful because two models can look similar at one tolerance but behave very differently
+    across the full range. A model that performs well at small k values makes precise boundary predictions.
+    A model that improves only at larger k values may still find approximately correct regions, but with less
+    accurate boundaries. You can move your mouse over the curves to inspect values at different tolerances, and
+    you can click on the curve to automatically select the k value that should be used by all other tables across
+    the leaderboard.
   </p>
+
+  <p>
+    The <strong>Full metrics</strong> panel expands the selected k value into a more complete table. The branch tabs
+    switch between exon and CDS results. The <strong>Interval level</strong> block reports precision, recall, F1, and
+    MI before the segmentation check. Precision is calculated over predicted transcripts. It tells you what fraction
+    of transcript predictions are matched to the reference. Recall is calculated over reference genes. It tells you
+    what fraction of annotated genes are recovered by at least one matched transcript. F1 summarizes the balance
+    between transcript-level precision and gene-level recall. MI reports how many multi-isoform genes are recovered.
+    The <strong>Segmentation level</strong> block reports the same metrics after requiring correct internal exon or CDS
+    structure. The <strong>Exact part level</strong> block takes the set of exon intervals in the exon branch, or the set
+    of CDS intervals in the CDS branch, separately from predictions and ground truth. It then calculates precision,
+    recall, and F1 from exact interval matches. A more detailed definition of this part-level calculation is provided
+    in the metric description section.
+  </p>
+
+  <p>
+    The <strong>Stratifier</strong> panel helps you find out where a model may perform better or worse inside the
+    evaluated annotation. You choose a model, a branch, a k value, and a grouping rule such as transcript type,
+    strand, or chromosome. The same metrics from the main and full tables are then recalculated separately inside
+    each selected group. This makes it easier to see whether an overall score is stable across biological categories
+    or whether it is driven mainly by particular subsets, such as mRNA genes, lncRNA genes, forward-strand
+    transcripts, reverse-strand transcripts, or a specific chromosome group.
+  </p>
+
+  <p>
+    The <strong>Detailed information</strong> panel lets you inspect recovery at the level of individual ground-truth
+    genes and transcripts. It starts with the reference gene list. After opening a gene, you can inspect its annotated
+    transcripts and their basic attributes. After opening a transcript, you can see which predictions from each model
+    matched that ground-truth transcript and the smallest k value at which each match appears. This panel is useful
+    when you want to check which model recovered a particular transcript, compare matched predictions for the same
+    reference object, or understand a specific biological example beyond the aggregate scores.
+  </p>
+
+  <p>
+    The final panel, <strong>Temporary submission</strong>, lets you upload your own prediction GFF and assign it a
+    model name for the current session. The uploaded prediction is evaluated on demand and appears together with
+    the other models in the tables and curves. It is not stored permanently and disappears after page refresh. To add
+    a model to the leaderboard permanently, you have to open a pull request with your predictions and model name
+    to the provided GitHub repository.
+  </p>
+</section>
 `;
 
 function SectionTitle({ icon = null, title, subtitle = null }) {
@@ -262,6 +306,17 @@ export default function LeaderboardPanel() {
   const [leaderboardExpanded, setLeaderboardExpanded] = useState(false);
   const uploadInputRef = useRef(null);
   const mainControlsRowRef = useRef(null);
+
+  const benchmarkLaunchDateLabel = useMemo(() => {
+    if (!status?.launched_at) {
+      return "Benchmark launch date: —";
+    }
+    const parsed = Number(status.launched_at);
+    if (!Number.isFinite(parsed)) {
+      return "Benchmark launch date: —";
+    }
+    return `Benchmark launch date: ${new Date(parsed * 1000).toLocaleString()}`;
+  }, [status]);
 
   const selectedK = useMemo(() => {
     const parsed = Number(selectedKInput);
@@ -822,7 +877,7 @@ export default function LeaderboardPanel() {
           {uploadLoading ? (
             <Box className="score-calc-animation">
               <span className="orb" />
-              <Typography color="text.secondary">Calculating score trajectories and transcript evidence…</Typography>
+              <Typography color="text.secondary">Calculating metrics for you model...</Typography>
             </Box>
           ) : null}
 
@@ -1608,6 +1663,10 @@ export default function LeaderboardPanel() {
             </Stack>
           )}
         </Stack>
+      </Paper>
+
+      <Paper className="glass-card" sx={{ p: { xs: 2.0, md: 2.4 }, order: 8, mt: 3.2 }}>
+        <Typography color="text.secondary">{benchmarkLaunchDateLabel}</Typography>
       </Paper>
     </Stack>
   );
