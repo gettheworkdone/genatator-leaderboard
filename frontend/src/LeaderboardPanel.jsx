@@ -186,7 +186,7 @@ function SectionTitle({ icon = null, title, subtitle = null }) {
         {icon}
         <Typography variant="h5">{title}</Typography>
       </Stack>
-      {subtitle ? <Typography color="text.secondary" sx={{ fontSize: "0.67rem", lineHeight: 1.45 }}>{subtitle}</Typography> : null}
+      {subtitle ? <Typography color="text.secondary" sx={{ fontSize: "0.8rem", lineHeight: 1.45 }}>{subtitle}</Typography> : null}
     </Stack>
   );
 }
@@ -834,7 +834,7 @@ export default function LeaderboardPanel() {
             subtitle="Upload your own prediction GFF, give it a model name, and compare it with the leaderboard models for the current browser session."
           />
 
-          <Typography color="text.secondary">
+          <Typography color="text.secondary" sx={{ fontSize: "0.8rem", lineHeight: 1.45 }}>
             Temporary submissions are processed one by one for all users. After processing, your uploaded model appears on this page for the current session only. It is not saved in persistent Space storage and disappears after page refresh. For permanent inclusion, open a pull request to the provided GitHub repository with your prediction file and model name.
           </Typography>
 
