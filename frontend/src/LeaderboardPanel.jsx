@@ -896,7 +896,7 @@ export default function LeaderboardPanel() {
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 0, mt: 0 }}>
         <Stack spacing={1.4}>
           <SectionTitle title="TLDR" />
-          <Typography color="text.secondary" sx={{ fontSize: "0.92rem", lineHeight: 1.55 }}>
+          <Typography color="text.secondary" sx={{ fontSize: "0.92rem", lineHeight: 1.55, fontWeight: 700 }}>
             Tiberius is the strongest model for recovering CDS regions in mRNA genes. GENATATOR is strongest for
             recovering mRNA UTRs, detecting lncRNA genes, and finding multiple transcript isoforms for the same gene.
             For the most robust annotation, run both Tiberius and GENATATOR, then use the intersection of the
@@ -1010,7 +1010,20 @@ export default function LeaderboardPanel() {
                       <TableCell sx={{ width: 56, minWidth: 56 }}>{index + 1}</TableCell>
                       <TableCell>
                         <Stack direction="row" spacing={1} alignItems="center">
-                          <Typography fontWeight={760}>{row.display_name}</Typography>
+                          {row.reference_url ? (
+                            <Typography
+                              component="a"
+                              href={row.reference_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              fontWeight={760}
+                              sx={{ color: "primary.main", textDecoration: "underline" }}
+                            >
+                              {row.display_name}
+                            </Typography>
+                          ) : (
+                            <Typography fontWeight={760}>{row.display_name}</Typography>
+                          )}
                         </Stack>
                       </TableCell>
                       <TableCell
@@ -1246,7 +1259,20 @@ export default function LeaderboardPanel() {
                     <TableRow key={row.model_id}>
                       <TableCell sx={{ width: 280, minWidth: 280 }}>
                         <Stack direction="row" spacing={1} alignItems="center">
-                          <Typography fontWeight={760}>{row.display_name}</Typography>
+                          {row.reference_url ? (
+                            <Typography
+                              component="a"
+                              href={row.reference_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              fontWeight={760}
+                              sx={{ color: "primary.main", textDecoration: "underline" }}
+                            >
+                              {row.display_name}
+                            </Typography>
+                          ) : (
+                            <Typography fontWeight={760}>{row.display_name}</Typography>
+                          )}
                         </Stack>
                       </TableCell>
                       <TableCell

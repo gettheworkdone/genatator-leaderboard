@@ -126,6 +126,7 @@ class LeaderboardService:
         self.predictions_dir = self.data_dir / "predictions"
         self.mapping_path = self.data_dir / "model_name_mapping.json"
         self._display_name_mapping: dict[str, Any] = {}
+        self._reference_mapping: dict[str, str] = {}
 
         self.evaluator = GeneLevelEvaluator()
         self._lock = threading.Lock()
@@ -392,8 +393,9 @@ class LeaderboardService:
                 stage="loading-predictions",
                 message="Downloading permanent prediction files and model mapping.",
             )
-            files, mapping = self._prediction_files_and_mapping()
+            files, mapping, references = self._prediction_files_and_mapping()
             self._display_name_mapping = mapping
+            self._reference_mapping = references
 
             if not self.ground_truth_path.exists():
                 self._set_state(
@@ -720,6 +722,7 @@ class LeaderboardService:
         return {
             "model_id": bundle.model_id,
             "display_name": bundle.display_name,
+            "reference_url": self._reference_url_for_bundle(bundle),
             "temporary": bundle.temporary,
             "source_file": bundle.source_file,
             "metrics_at_default_k": metrics_at_default_k,
@@ -734,6 +737,7 @@ class LeaderboardService:
         return {
             "model_id": bundle.model_id,
             "display_name": bundle.display_name,
+            "reference_url": self._reference_url_for_bundle(bundle),
             "temporary": bundle.temporary,
             "interval_precision": interval_payload["precision"],
             "interval_recall": interval_payload["recall"],
@@ -796,11 +800,11 @@ class LeaderboardService:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _prediction_files_and_mapping(self) -> tuple[list[Path], dict[str, Any]]:
-        remote_files, remote_mapping = self._sync_predictions_repo()
+    def _prediction_files_and_mapping(self) -> tuple[list[Path], dict[str, Any], dict[str, str]]:
+        remote_files, remote_mapping, remote_references = self._sync_predictions_repo()
         if remote_files:
-            return remote_files, remote_mapping
-        return self._local_prediction_files(), self._local_mapping()
+            return remote_files, remote_mapping, remote_references
+        return self._local_prediction_files(), self._local_mapping(), {}
 
     def _local_prediction_files(self) -> list[Path]:
         if not self.predictions_dir.exists():
@@ -819,7 +823,7 @@ class LeaderboardService:
             return json.loads(self.mapping_path.read_text(encoding="utf-8"))
         return {}
 
-    def _sync_predictions_repo(self) -> tuple[list[Path], dict[str, Any]]:
+    def _sync_predictions_repo(self) -> tuple[list[Path], dict[str, Any], dict[str, str]]:
         try:
             self.external_dir.mkdir(parents=True, exist_ok=True)
             if self.pred_repo_dir.exists():
@@ -850,6 +854,15 @@ class LeaderboardService:
                         mapping = loaded
                         break
 
+            references: dict[str, str] = {}
+            references_path = self.pred_repo_dir / "references.json"
+            if references_path.exists():
+                loaded_references = json.loads(references_path.read_text(encoding="utf-8"))
+                if isinstance(loaded_references, dict):
+                    for key, value in loaded_references.items():
+                        if isinstance(value, str) and value.strip():
+                            references[Path(str(key)).stem] = value.strip()
+
             valid_suffixes = {".gff", ".gff3", ".txt", ".gtf"}
             files = sorted(
                 [path for path in predictions_src_dir.iterdir() if path.is_file() and path.suffix.lower() in valid_suffixes],
@@ -858,9 +871,9 @@ class LeaderboardService:
             normalized_map: dict[str, Any] = {}
             for key, value in mapping.items():
                 normalized_map[Path(str(key)).stem] = value
-            return files, normalized_map
+            return files, normalized_map, references
         except Exception:
-            return [], {}
+            return [], {}, {}
 
     def _display_name_for_path(self, path: Path) -> str:
         mapping = self._display_name_mapping or self._local_mapping()
@@ -877,6 +890,17 @@ class LeaderboardService:
             if isinstance(value, dict) and isinstance(value.get("display_name"), str):
                 return value["display_name"]
         return path.stem.replace("_", " ")
+
+    def _reference_url_for_bundle(self, bundle: ModelBundle) -> str | None:
+        if bundle.temporary:
+            return None
+        candidates = [bundle.model_id, bundle.display_name]
+        if bundle.source_file:
+            candidates.extend([Path(bundle.source_file).stem, Path(bundle.source_file).name])
+        for key in candidates:
+            if key in self._reference_mapping:
+                return self._reference_mapping[key]
+        return None
 
     def _canonical_transcript_type(self, value: str) -> str:
         normalized = value.strip().lower()
