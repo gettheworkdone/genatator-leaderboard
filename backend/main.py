@@ -148,8 +148,8 @@ def leaderboard_reload() -> dict[str, Any]:
 
 
 @app.get("/api/leaderboard/overview")
-def leaderboard_overview() -> dict[str, Any]:
-    return LEADERBOARD.overview()
+def leaderboard_overview(use_strand: bool = Query(True)) -> dict[str, Any]:
+    return LEADERBOARD.overview(use_strand=use_strand)
 
 
 @app.get("/api/leaderboard/full-metrics")
@@ -157,12 +157,13 @@ def leaderboard_full_metrics(
     branch: str = Query("exon"),
     k: int = Query(DEFAULT_K),
     model_ids: Optional[str] = Query(None),
+    use_strand: bool = Query(True),
 ) -> dict[str, Any]:
     if branch not in BRANCHES:
         raise HTTPException(status_code=400, detail=f"Unknown branch: {branch}")
     ids = [item for item in (model_ids or "").split(",") if item.strip()] or None
     try:
-        return LEADERBOARD.full_metrics(branch=branch, k=int(k), model_ids=ids)
+        return LEADERBOARD.full_metrics(branch=branch, k=int(k), model_ids=ids, use_strand=use_strand)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -173,11 +174,12 @@ def leaderboard_stratifier(
     branch: str = Query("exon"),
     rule: str = Query("transcript_type"),
     k: int = Query(DEFAULT_K),
+    use_strand: bool = Query(True),
 ) -> dict[str, Any]:
     if branch not in BRANCHES:
         raise HTTPException(status_code=400, detail=f"Unknown branch: {branch}")
     try:
-        return LEADERBOARD.stratifier(branch=branch, k=int(k), model_id=model_id, rule=rule)
+        return LEADERBOARD.stratifier(branch=branch, k=int(k), model_id=model_id, rule=rule, use_strand=use_strand)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -188,10 +190,11 @@ def leaderboard_genes(
     query: str = Query(""),
     page: int = Query(1),
     page_size: int = Query(25),
+    use_strand: bool = Query(True),
 ) -> dict[str, Any]:
     if branch not in BRANCHES:
         raise HTTPException(status_code=400, detail=f"Unknown branch: {branch}")
-    return LEADERBOARD.genes(branch=branch, query=query, page=page, page_size=page_size)
+    return LEADERBOARD.genes(branch=branch, query=query, page=page, page_size=page_size, use_strand=use_strand)
 
 
 @app.get("/api/leaderboard/gene/{gene_id}")
@@ -200,12 +203,13 @@ def leaderboard_gene_detail(
     branch: str = Query("exon"),
     k: int = Query(DEFAULT_K),
     model_ids: Optional[str] = Query(None),
+    use_strand: bool = Query(True),
 ) -> dict[str, Any]:
     if branch not in BRANCHES:
         raise HTTPException(status_code=400, detail=f"Unknown branch: {branch}")
     ids = [item for item in (model_ids or "").split(",") if item.strip()] or None
     try:
-        return LEADERBOARD.gene_detail(branch=branch, gene_id=gene_id, k=int(k), model_ids=ids)
+        return LEADERBOARD.gene_detail(branch=branch, gene_id=gene_id, k=int(k), model_ids=ids, use_strand=use_strand)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
