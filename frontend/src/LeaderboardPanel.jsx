@@ -831,13 +831,11 @@ export default function LeaderboardPanel() {
         <Stack spacing={1.8}>
           <SectionTitle
             title="Temporary submission"
-            subtitle="Upload a prediction GFF and compute a temporary preview for this browser session only."
+            subtitle="Upload your own prediction GFF, give it a model name, and compare it with the leaderboard models for the current browser session."
           />
 
           <Typography color="text.secondary">
-            Temporary submissions are queued globally and processed one by one across all users. They are
-            shown on this page for the current session after processing, are not written to persistent Space storage,
-            and are removed after refresh. For permanent inclusion, open a pull request to the permanent repository.
+            Temporary submissions are processed one by one for all users. After processing, your uploaded model appears on this page for the current session only. It is not saved in persistent Space storage and disappears after page refresh. For permanent inclusion, open a pull request to the provided GitHub repository with your prediction file and model name.
           </Typography>
 
           <TextField
@@ -904,7 +902,7 @@ export default function LeaderboardPanel() {
             <Stack spacing={0.6}>
               <SectionTitle
                 title="Main metrics"
-                subtitle="The table is evaluated at a user-selected tolerance k and shows both exon and CDS branches simultaneously."
+                subtitle="Choose the tolerance k and quickly compare all models. This table shows the most important exon and CDS scores in one place."
               />
             </Stack>
 
@@ -1097,7 +1095,7 @@ export default function LeaderboardPanel() {
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
               title="Metric curves"
-              subtitle="Choose the branch, metric, and models to inspect smooth trajectories over k = 0…500. Click the chart to set the active operating point."
+              subtitle="See how a selected score changes when k changes. Choose the branch, metric, and models, then click to set the active k for the rest of the leaderboard."
             />
             <Stack direction={{ xs: "column", lg: "row" }} spacing={1.2} alignItems={{ lg: "center" }}>
               <BranchTabs value={graphBranch} onChange={setGraphBranch} />
@@ -1185,7 +1183,7 @@ export default function LeaderboardPanel() {
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
               title="Full metrics"
-              subtitle="Complete metric table at the active k for the models selected in the graph panel."
+              subtitle="View the complete set of scores for the selected models at the active k. Use this panel when you want more detail than the Main metrics table provides."
             />
             <BranchTabs value={fullBranch} onChange={setFullBranch} />
           </Stack>
@@ -1356,7 +1354,7 @@ export default function LeaderboardPanel() {
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
               title="Stratifier"
-              subtitle="Select a model and a biologically meaningful grouping rule to inspect branch-specific behaviour within subsets of the benchmark."
+              subtitle="Check whether a model performs differently across groups such as transcript type, strand, or chromosome. Choose a model, a branch, and a grouping rule."
             />
             <BranchTabs value={stratBranch} onChange={setStratBranch} />
           </Stack>
@@ -1440,7 +1438,7 @@ export default function LeaderboardPanel() {
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
               title="Detailed information"
-              subtitle="Transcript-level evidence and matched prediction counts per gene."
+              subtitle="Look up a ground-truth gene or transcript and see which model predictions recovered it. This panel is for checking individual biological examples, not only summary scores."
             />
             <BranchTabs
               value={detailBranch}
