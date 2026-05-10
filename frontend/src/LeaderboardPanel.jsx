@@ -80,8 +80,6 @@ const SORT_METRICS = [
 
 const LEADERBOARD_DESCRIPTION_HTML = String.raw`
 <section id="leaderboard-description"> 
-  <h2>Leaderboard description</h2>
-
   <p>
     This leaderboard compares annotation models on human chromosome 20 (NC_060944.1) from the T2T
     genome assembly GCF_009914755.1. The evaluation is restricted to mRNA and lncRNA genes and measures
@@ -707,7 +705,7 @@ export default function LeaderboardPanel() {
       const baseName = uploadFile.name.replace(/\.[^.]+$/, "") || "Temporary preview";
       const modelName = uploadModelName.trim() || baseName;
 
-      const response = await fetch("/api/leaderboard/temporary-preview", {
+      const response = await fetch("/api/leaderboard/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -722,17 +720,15 @@ export default function LeaderboardPanel() {
         return;
       }
 
-      setTemporaryPreviews((current) => [...current, payload]);
-      setUploadMessage(
-        "Temporary preview computed. It is visible only in this session and disappears after page refresh.",
-      );
-      setGeneDetails({});
+      setUploadMessage(payload.message || "Submission queued.");
       setUploadFile(null);
       setUploadModelName("");
 
       if (uploadInputRef.current) {
         uploadInputRef.current.value = "";
       }
+
+      await reloadLeaderboard();
     } catch (error) {
       setUploadMessage(error?.message || "Upload failed.");
     } finally {
@@ -839,9 +835,9 @@ export default function LeaderboardPanel() {
           />
 
           <Typography color="text.secondary">
-            Temporary submissions are computed on demand and shown only on this page for the current session. They are
-            not written to persistent Space storage and are removed after refresh. For permanent inclusion, open a pull
-            request to the permanent repository.
+            Temporary submissions are queued globally and processed one by one across all users. They are
+            shown on this page for the current session after processing, are not written to persistent Space storage,
+            and are removed after refresh. For permanent inclusion, open a pull request to the permanent repository.
           </Typography>
 
           <TextField
@@ -873,6 +869,10 @@ export default function LeaderboardPanel() {
           <Button variant="contained" onClick={submitPreview} disabled={uploadLoading}>
             Submit
           </Button>
+
+          <Typography color="text.secondary">
+            Queue length: {status?.upload_queue_length ?? 0}. Current workload: {status?.upload_current || "idle"}.
+          </Typography>
 
           {uploadLoading ? (
             <Box className="score-calc-animation">
