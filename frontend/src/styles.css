@@ -382,8 +382,3 @@ body::after {
   font-weight: 700;
 }
 
-.main-metrics-right-controls [role="checkbox"],
-.main-metrics-right-controls .MuiCheckbox-root,
-.main-metrics-right-controls label {
-  display: none !important;
-}
