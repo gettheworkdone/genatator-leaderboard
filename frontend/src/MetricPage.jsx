@@ -23,8 +23,8 @@ const EVALUATE_SNIPPET = `# How to use this metric with Hugging Face Evaluate
 # Install dependencies:
 #   pip install evaluate
 #
-# Load the metric from the Hugging Face repository:
-#   shmelev/genatator-leaderboard
+# Load the metric script from a local path:
+#   ./evaluate_gene_level_metric.py
 #
 # The metric expects local GFF/GFF3-style files.
 # Pass file paths as plain strings.
@@ -53,7 +53,7 @@ const EVALUATE_SNIPPET = `# How to use this metric with Hugging Face Evaluate
 
 import evaluate
 
-metric = evaluate.load("shmelev/genatator-leaderboard")
+metric = evaluate.load("./evaluate_gene_level_metric.py")
 
 pred_gff_path = "/tmp/predictions.gff"
 true_gff_path = "/tmp/reference.gff"
