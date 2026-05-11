@@ -10,6 +10,7 @@ import {
   Chip,
   Checkbox,
   CircularProgress,
+  FormControlLabel,
   InputAdornment,
   LinearProgress,
   MenuItem,
@@ -563,6 +564,7 @@ export default function LeaderboardPanel() {
       params.set("model_ids", fullMetricsModelIds.join(","));
     }
 
+    params.set("use_strand", useStrand ? "true" : "false");
     fetch(`/api/leaderboard/full-metrics?${params.toString()}`)
       .then((response) => response.json())
       .then((payload) => {
@@ -740,7 +742,7 @@ export default function LeaderboardPanel() {
       const baseName = uploadFile.name.replace(/\.[^.]+$/, "") || "Temporary preview";
       const modelName = uploadModelName.trim() || baseName;
 
-      const response = await fetch("/api/leaderboard/temporary-preview", {
+      const response = await fetch("/api/leaderboard/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -997,7 +999,7 @@ export default function LeaderboardPanel() {
                   setSelectedKInput(`${Math.max(0, Math.min(parsed, 500))}`);
                 }}
                 inputProps={{ min: 0, max: 500 }}
-                sx={{ width: 120, ...uniformFieldSx }}
+                sx={{ width: 120, ml: { sm: 3.0 }, ...uniformFieldSx }}
               />
 
               <TextField
