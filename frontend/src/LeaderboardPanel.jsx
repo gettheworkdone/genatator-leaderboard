@@ -80,8 +80,6 @@ const SORT_METRICS = [
 
 const LEADERBOARD_DESCRIPTION_HTML = String.raw`
 <section id="leaderboard-description">
-  <h2>Leaderboard description</h2>
-
   <p>
     This leaderboard compares annotation models on human chromosome 20 (NC_060944.1) from the T2T
     genome assembly GCF_009914755.1. The evaluation is restricted to mRNA and lncRNA genes and measures
