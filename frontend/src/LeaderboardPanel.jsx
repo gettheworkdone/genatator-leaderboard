@@ -400,6 +400,7 @@ export default function LeaderboardPanel() {
     const rows = modelsCombined.map((model) => ({
       model_id: model.model_id,
       display_name: model.display_name,
+      reference_url: model.reference_url,
       temporary: model.temporary,
       exon_interval_f1: modelValueAtK(overview, model, "exon", "interval_f1", selectedK),
       exon_interval_mi: modelValueAtK(overview, model, "exon", "interval_mi", selectedK),
@@ -934,7 +935,6 @@ export default function LeaderboardPanel() {
           </Alert>
         </Stack>
       </Paper>
-
 
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 0, mt: 0 }}>
         <Stack spacing={1.4}>
