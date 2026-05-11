@@ -8,6 +8,7 @@ import {
   Box,
   Button,
   Chip,
+  Checkbox,
   CircularProgress,
   InputAdornment,
   LinearProgress,
@@ -51,33 +52,6 @@ const CHART_COLORS = [
   "#1d4ed8",
   "#ea580c",
 ];
-const CHART_TICKS = [0, 150, 250, 350, 500];
-
-const CHART_TICKS = [0, 150, 250, 350, 500];
-
-const CHART_TICKS = [0, 150, 250, 350, 500];
-
-const CHART_AXIS_TICKS = [0, 150, 250, 350, 500];
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
-
-const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
 const CHART_AXIS_TICKS = Object.freeze([0, 150, 250, 350, 500]);
 
@@ -104,72 +78,151 @@ const SORT_METRICS = [
 ];
 
 const LEADERBOARD_DESCRIPTION_HTML = String.raw`
+<section id="metric-description">
   <p>
-    The leaderboard is meant to help you read the metric in stages, from a quick overview to transcript-level evidence.
-    The first panel, <strong>Temporary submission</strong>, lets you upload a prediction GFF and give it a model name for
-    the current browser session. The uploaded file is evaluated on demand under the same rules as the permanent entries,
-    appears in the tables and plots for that session, and disappears after refresh. This makes it easy to compare a new model
-    without changing the permanent ranking.
+    This metric is designed for genome annotation cases where a prediction can look locally accurate while still being
+    biologically wrong. A small shift at a transcript, exon, or coding boundary may preserve much of the basewise signal,
+    but it can still change splice structure, disrupt the coding frame, or alter the translated product. For that reason,
+    the metric does not rely on per-nucleotide comparison. Instead, it was designed to account for the main biological
+    constraints of gene annotation. Splice-site boundaries are assessed strictly, while the tolerance parameter \(k\) is
+    introduced to reflect the fact that transcription start and end positions can vary in real cells.
   </p>
 
   <p>
-    The next place to look is <strong>Main metrics</strong>. This is the compact overview of the most important quantities,
-    and it shows the exon and CDS branches side by side at the same active tolerance \(k\). The control
-    <strong>Active k</strong> sets the boundary tolerance currently used in the table, and <strong>Sort rows</strong> tells the
-    table which score should define the ordering. Under each branch, the column <strong>F1 w/o seg.</strong> means
-    interval-level F1 before the structural filter is applied. The column <strong>MI w/o seg.</strong> means multi-isoform
-    recovery at the same interval level. The column <strong>F1 with seg.</strong> means F1 after interval-matched pairs are
-    additionally required to pass the segmentation check. The column <strong>MI with seg.</strong> is the corresponding
-    multi-isoform count after that same structural filter. Read the <strong>Exon</strong> side as recovery of transcript
-    architecture, and the <strong>CDS</strong> side as recovery of coding structure.
+    The metric has two branches. The <strong>exon branch</strong> evaluates transcript structure for mRNA and lncRNA genes.
+    For mRNA transcripts, this includes both UTR exons and coding exons. The <strong>CDS branch</strong> evaluates the
+    coding sequence structure of mRNA transcripts. In simple terms, the exon branch asks whether the model recovers the
+    transcribed exon structure, while the CDS branch asks whether it recovers the protein-coding structure.
   </p>
 
   <p>
-    If you want to see how a score changes as the tolerance varies, use the curve view on the page together with Main metrics.
-    That is the fastest way to understand whether a model is precise already at small \(k\) or improves only when the
-    matching rule becomes more permissive. Drag your mouse over the curve to inspect values at different tolerances, and use
-    that operating point to interpret the tables below.
+    Let \(k \ge 0\) be the allowed boundary deviation measured in base pairs. In this context, transcript start means the
+    first transcribed nucleotide, and transcript end means the last transcribed nucleotide. These positions are not always
+    sharply defined in biology, because transcription initiation and termination can vary across molecules. This is different
+    from splice sites, which correspond to much more precise exon-intron boundaries. Therefore, the metric is evaluated at
+    a user-specified value of \(k\), where smaller values require stricter boundary agreement and larger values allow more
+    tolerant matching.
   </p>
 
   <p>
-    The <strong>Full metrics</strong> panel expands the summary at the currently active \(k\). The branch tabs switch between
-    exon and CDS views. Inside the table, the block <strong>Interval level</strong> reports
-    <strong>Precision</strong>, <strong>Recall</strong>, <strong>F1</strong>, and <strong>MI</strong> exactly as defined in the
-    metric description. The block <strong>Segmentation level</strong> reports the same four quantities after the structural
-    filter has been applied. The block <strong>Exact part level</strong> reports part-level
-    <strong>Precision</strong>, <strong>Recall</strong>, and <strong>F1</strong> for pooled unique exon intervals in the exon branch
-    or pooled unique CDS intervals in the CDS branch. This panel is where you go when the summary table tells you that two
-    models differ and you want to see whether the difference comes from prediction purity, gene recovery, structural fidelity,
-    isoform recovery, or exact part detection.
+    At a given value of \(k\), the metric first computes an <strong>interval-level</strong> score. In the exon branch,
+    this is similar to comparing BED-like intervals that contain only transcript starts and ends. It asks whether a predicted
+    transcript interval falls close enough to a reference transcript interval, without checking the internal exon structure.
+    In the CDS branch, the same idea is applied to the coding span of an mRNA transcript. A predicted interval is considered
+    matched only if its relevant boundaries satisfy the chosen tolerance. Therefore, even if a prediction covers almost the
+    entire reference transcript, it is still counted as unmatched if one of its relevant boundaries lies outside the specified
+    \(k\) by even one additional nucleotide.
   </p>
 
   <p>
-    The <strong>Stratifier</strong> panel answers a different question: where does a model perform well or poorly inside the
-    benchmark? You choose a <strong>Model</strong>, a biologically meaningful grouping <strong>Rule</strong>, a branch, and an
-    active \(k\). The rows then correspond to the selected groups, such as transcript type, strand, or chromosome. The
-    columns <strong>Interval F1</strong> and <strong>Interval MI</strong> are the interval-level scores within that subset. The
-    columns <strong>Segmentation F1</strong> and <strong>Segmentation MI</strong> are the corresponding scores after the
-    segmentation filter. The column <strong>Exact part F1</strong> reports pooled exact exon or CDS recovery within the same
-    subset. This panel is useful when a model looks strong on average but behaves unevenly across biological categories.
+    Let \(TP_{\mathrm{int}}(k)\) be the number of matched predicted <strong>transcripts</strong>. Let
+    \(FP_{\mathrm{int}}(k)\) be the number of predicted <strong>transcripts</strong> that are not matched. Let
+    \(TP_{\mathrm{gene}}(k)\) be the number of reference <strong>genes</strong> for which at least one transcript is matched.
+    Let \(FN_{\mathrm{gene}}(k)\) be the number of reference <strong>genes</strong> for which no transcript is matched.
+    Then
+  </p>
+
+  <div class="equation">
+    \[
+      \mathrm{Precision}(k)=
+      \frac{TP_{\mathrm{int}}(k)}
+      {TP_{\mathrm{int}}(k)+FP_{\mathrm{int}}(k)},
+      \qquad
+      \mathrm{Recall}(k)=
+      \frac{TP_{\mathrm{gene}}(k)}
+      {TP_{\mathrm{gene}}(k)+FN_{\mathrm{gene}}(k)},
+    \]
+    \[
+      F_{1}(k)=
+      \frac{2\,\mathrm{Precision}(k)\,\mathrm{Recall}(k)}
+      {\mathrm{Precision}(k)+\mathrm{Recall}(k)}.
+    \]
+  </div>
+
+  <p>
+    Precision and recall are intentionally defined over different biological entities. Precision is calculated over predicted
+    <strong>transcripts</strong>, because false positives are naturally defined as predicted transcript objects that fail to
+    match the reference at the chosen \(k\). Recall, however, is calculated over reference <strong>genes</strong>, not over
+    reference transcripts. This is necessary because multiple annotated isoforms of the same gene can have identical transcript
+    start and end coordinates. At the interval level, where internal segmentation is not considered, such isoforms cannot be
+    distinguished by their outer interval alone. Therefore, a transcript-level false negative would be ambiguous. The metric
+    could not determine which isoform with the same outer coordinates was missed. Gene-level recall avoids this ambiguity.
+    A reference gene is counted as recovered when at least one of its transcripts is matched.
   </p>
 
   <p>
-    The last panel, <strong>Detailed information</strong>, moves from model summaries to individual reference genes and
-    transcripts. It starts from the ground-truth gene list. Once you open a gene, you can inspect its annotated transcripts and
-    their basic attributes. Once you open a transcript, you can see which predictions matched it and the smallest tolerance
-    \(k\) at which each match appears. This is the panel to use when you want to verify why a model gained or lost score on
-    a particular biological example rather than only reading the aggregate numbers.
+    This convention also gives a consistent interpretation to models that predict several alternative transcripts with the
+    same start and end positions. At the interval level, those predictions are indistinguishable by boundaries alone. Since
+    \(TP_{\mathrm{int}}(k)\) is counted over predicted transcript objects, each predicted transcript whose interval matches
+    the reference can contribute to the number of matched predictions. The interval-level score therefore evaluates whether
+    predicted transcript intervals are supported, but it does not claim to resolve alternative splicing when isoforms share
+    the same outer coordinates.
   </p>
+
+  <p>
+    The next step is <strong>segmentation-aware evaluation</strong>. Interval matching alone is not enough, because a model
+    may find the right genomic region while still predicting the wrong exon chain or CDS. In the exon branch, the
+    prediction must reconstruct the exon structure after allowing tolerance only at the outer transcript boundaries. Internal
+    splice-site boundaries must still be correct. In the CDS branch, the CDS must match exactly, because coding boundary
+    errors can change the encoded protein. This segmentation-aware step makes it possible to distinguish isoforms with the
+    same transcript start and end positions when they differ in internal exon or CDS structure. Importantly, the calculation
+    principle remains the same: precision is still calculated over predicted transcripts, recall is still calculated over
+    reference genes, and the same F1 formula is applied after the structural filter has been added.
+  </p>
+
+  <p>
+    The metric also reports <strong>multi-isoform recovery</strong> (MI). MI is calculated only for genes that really have
+    multiple distinct isoforms in the reference annotation. A gene contributes to MI only if the prediction recovers at least
+    two distinct transcript objects that match at least two distinct annotated isoforms of that gene. Therefore, MI without
+    segmentation measures whether multiple isoforms are recovered after interval matching, while MI with segmentation
+    measures whether multiple isoforms are recovered after the structural check as well.
+  </p>
+
+  <p>
+    Finally, the metric reports <strong>exact part-level</strong> scores. For a chosen branch \(B\), let
+    \(S_{\mathrm{pred}}^{B}\) be the set of all unique predicted intervals of that branch pooled across transcripts, and let
+    \(S_{\mathrm{true}}^{B}\) be the corresponding set of unique reference intervals. In the exon branch, these sets contain
+    exon intervals. In the CDS branch, these sets contain CDS intervals. A <em>true positive</em> is a predicted interval in
+    \(S_{\mathrm{pred}}^{B}\) that exactly matches an interval in \(S_{\mathrm{true}}^{B}\). A <em>false positive</em> is a
+    predicted interval with no exact reference match. A <em>false negative</em> is a reference interval that is not recovered
+    by any predicted interval. If \(TP_{\mathrm{part}}^{B}\), \(FP_{\mathrm{part}}^{B}\), and \(FN_{\mathrm{part}}^{B}\)
+    denote these counts, then
+  </p>
+
+  <div class="equation">
+    \[
+      \mathrm{Precision}_{\mathrm{part}}^{B}=
+      \frac{TP_{\mathrm{part}}^{B}}
+      {TP_{\mathrm{part}}^{B}+FP_{\mathrm{part}}^{B}},
+      \qquad
+      \mathrm{Recall}_{\mathrm{part}}^{B}=
+      \frac{TP_{\mathrm{part}}^{B}}
+      {TP_{\mathrm{part}}^{B}+FN_{\mathrm{part}}^{B}},
+    \]
+    \[
+      F_{1,\mathrm{part}}^{B}=
+      \frac{2\,\mathrm{Precision}_{\mathrm{part}}^{B}\,\mathrm{Recall}_{\mathrm{part}}^{B}}
+      {\mathrm{Precision}_{\mathrm{part}}^{B}+\mathrm{Recall}_{\mathrm{part}}^{B}}.
+    \]
+  </div>
+
+  <p>
+    These part-level scores answer a narrower question than transcript-level evaluation. They show whether the model found
+    the correct exon or CDS pieces, even if it failed to assemble those pieces into the correct full transcript. Together,
+    interval-level F1, segmentation-aware F1, MI, and exact part-level scores give a rigorous but readable picture of
+    annotation quality.
+  </p>
+</section>
 `;
 
-function SectionTitle({ icon = null, title, subtitle = null }) {
+function SectionTitle({ icon = null, title, subtitle = null, constrainSubtitle = true }) {
   return (
     <Stack spacing={0.6}>
       <Stack direction="row" spacing={1} alignItems="center">
         {icon}
         <Typography variant="h5">{title}</Typography>
       </Stack>
-      {subtitle ? <Typography color="text.secondary">{subtitle}</Typography> : null}
+      {subtitle ? <Typography color="text.secondary" sx={{ fontSize: "0.8rem", lineHeight: 1.45, maxWidth: constrainSubtitle ? { xs: "100%", md: "105%" } : "none" }}>{subtitle}</Typography> : null}
     </Stack>
   );
 }
@@ -257,6 +310,7 @@ export default function LeaderboardPanel() {
   const [overview, setOverview] = useState(null);
   const [selectedKInput, setSelectedKInput] = useState("250");
   const [sortMetric, setSortMetric] = useState("exon_segmentation_f1");
+  const [useStrand, setUseStrand] = useState(true);
 
   const [graphBranch, setGraphBranch] = useState("exon");
   const [graphMetric, setGraphMetric] = useState("segmentation_f1");
@@ -285,6 +339,18 @@ export default function LeaderboardPanel() {
 
   const [leaderboardExpanded, setLeaderboardExpanded] = useState(false);
   const uploadInputRef = useRef(null);
+  const mainControlsRowRef = useRef(null);
+
+  const benchmarkLaunchDateLabel = useMemo(() => {
+    if (!status?.launched_at) {
+      return "Benchmark launch date: —";
+    }
+    const parsed = Number(status.launched_at);
+    if (!Number.isFinite(parsed)) {
+      return "Benchmark launch date: —";
+    }
+    return `Benchmark launch date: ${new Date(parsed * 1000).toLocaleString()}`;
+  }, [status]);
 
   const selectedK = useMemo(() => {
     const parsed = Number(selectedKInput);
@@ -407,7 +473,7 @@ export default function LeaderboardPanel() {
 
   const fetchOverview = async () => {
     try {
-      const response = await fetch("/api/leaderboard/overview");
+      const response = await fetch(`/api/leaderboard/overview?use_strand=${useStrand ? "true" : "false"}`);
       const payload = await response.json();
       setOverview(payload);
     } catch {
@@ -421,20 +487,41 @@ export default function LeaderboardPanel() {
 
   useEffect(() => {
     reloadLeaderboard();
-  }, []);
+  }, [useStrand]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
       reloadLeaderboard();
     }, 4000);
     return () => window.clearInterval(intervalId);
-  }, []);
+  }, [useStrand]);
 
   useEffect(() => {
     if (window?.MathJax?.typesetPromise) {
       window.MathJax.typesetPromise();
     }
   }, [leaderboardExpanded, overview]);
+
+  useEffect(() => {
+    const root = mainControlsRowRef.current;
+    if (!root) return;
+    const primaryCheckbox = root.querySelector('.use-strand-control .MuiCheckbox-root');
+    const primaryLabel = root.querySelector('.use-strand-control .MuiTypography-root');
+    if (primaryCheckbox) primaryCheckbox.style.display = "";
+    if (primaryLabel) primaryLabel.style.display = "";
+
+    const allCheckboxes = root.querySelectorAll('.MuiCheckbox-root');
+    allCheckboxes.forEach((el) => {
+      if (el !== primaryCheckbox) el.style.display = 'none';
+    });
+
+    const duplicateLabels = Array.from(root.querySelectorAll('.MuiTypography-root')).filter(
+      (el) => el !== primaryLabel && el.textContent?.trim() === 'Use strand',
+    );
+    duplicateLabels.forEach((el) => {
+      el.style.display = 'none';
+    });
+  }, [useStrand, sortMetric, selectedKInput]);
 
   useEffect(() => {
     if (!overview) {
@@ -469,6 +556,7 @@ export default function LeaderboardPanel() {
     const params = new URLSearchParams({
       branch: fullBranch,
       k: `${selectedK}`,
+      use_strand: useStrand ? "true" : "false",
     });
 
     if (fullMetricsModelIds.length > 0) {
@@ -482,14 +570,14 @@ export default function LeaderboardPanel() {
         temporaryPreviews.forEach((preview) => {
           const tempId = preview.model?.model_id;
           if (tempId && selectedModels.includes(tempId)) {
-            const localRow = preview.full_metrics?.[fullBranch]?.[selectedK];
+            const localRow = (preview.full_metrics_by_strand?.[useStrand ? "true" : "false"]?.[fullBranch]?.[selectedK]) || preview.full_metrics?.[fullBranch]?.[selectedK];
             if (localRow) rows.push(localRow);
           }
         });
         setFullMetrics({ ...payload, rows });
       })
       .catch(() => setFullMetrics(null));
-  }, [overview, modelsCombined, fullBranch, selectedK, selectedModels, temporaryPreviews]);
+  }, [overview, modelsCombined, fullBranch, selectedK, selectedModels, temporaryPreviews, useStrand]);
 
   useEffect(() => {
     if (!stratModel) {
@@ -499,7 +587,7 @@ export default function LeaderboardPanel() {
 
     const stratPreview = temporaryPreviewMap[stratModel];
     if (stratPreview) {
-      const rows = Object.entries(stratPreview.stratifier?.[stratBranch]?.[stratRule] || {})
+      const rows = Object.entries(((stratPreview.stratifier_by_strand?.[useStrand ? "true" : "false"] || stratPreview.stratifier)?.[stratBranch]?.[stratRule]) || {})
         .map(([groupName, perK]) => {
           const metrics = perK[selectedK];
           if (!metrics) {
@@ -532,13 +620,14 @@ export default function LeaderboardPanel() {
       branch: stratBranch,
       rule: stratRule,
       k: `${selectedK}`,
+      use_strand: useStrand ? "true" : "false",
     });
 
     fetch(`/api/leaderboard/stratifier?${params.toString()}`)
       .then((response) => response.json())
       .then((payload) => setStratifier(payload))
       .catch(() => setStratifier(null));
-  }, [stratModel, stratBranch, stratRule, selectedK, temporaryPreviewMap]);
+  }, [stratModel, stratBranch, stratRule, selectedK, temporaryPreviewMap, useStrand]);
 
   useEffect(() => {
     const params = new URLSearchParams({
@@ -546,13 +635,14 @@ export default function LeaderboardPanel() {
       query: geneQuery,
       page: `${genePage}`,
       page_size: "25",
+      use_strand: useStrand ? "true" : "false",
     });
 
     fetch(`/api/leaderboard/genes?${params.toString()}`)
       .then((response) => response.json())
       .then((payload) => setGeneList(payload))
       .catch(() => setGeneList({ items: [], total: 0, page: 1, page_size: 25 }));
-  }, [detailBranch, geneQuery, genePage]);
+  }, [detailBranch, geneQuery, genePage, useStrand]);
 
   const fetchGeneDetail = useCallback(async (geneId) => {
     const cacheKey = `${detailBranch}|${geneId}|${selectedK}|${selectedModels.join(",")}`;
@@ -565,6 +655,7 @@ export default function LeaderboardPanel() {
     const params = new URLSearchParams({
       branch: detailBranch,
       k: `${selectedK}`,
+      use_strand: useStrand ? "true" : "false",
     });
 
     if (geneDetailModelIds.length > 0) {
@@ -579,7 +670,7 @@ export default function LeaderboardPanel() {
       temporaryPreviews.forEach((preview) => {
         const temporaryModelId = preview.model?.model_id;
         if (!temporaryModelId || !selectedModels.includes(temporaryModelId)) return;
-        const local = preview.detailed?.[detailBranch]?.[transcript.transcript_id];
+        const local = ((preview.detailed_by_strand?.[useStrand ? "true" : "false"] || preview.detailed)?.[detailBranch]?.[transcript.transcript_id]);
         if (!local) return;
 
         const intervalMap = Object.fromEntries(
@@ -664,17 +755,18 @@ export default function LeaderboardPanel() {
         return;
       }
 
-      setTemporaryPreviews((current) => [...current, payload]);
-      setUploadMessage(
-        "Temporary preview computed. It is visible only in this session and disappears after page refresh.",
-      );
-      setGeneDetails({});
+      setTemporaryPreviews((current) => {
+        const next = current.filter((item) => item.model?.model_id !== payload.model?.model_id);
+        return [...next, payload];
+      });
+      setUploadMessage("Temporary preview loaded.");
       setUploadFile(null);
       setUploadModelName("");
 
       if (uploadInputRef.current) {
         uploadInputRef.current.value = "";
       }
+
     } catch (error) {
       setUploadMessage(error?.message || "Upload failed.");
     } finally {
@@ -683,7 +775,12 @@ export default function LeaderboardPanel() {
   };
 
   const showProgress = Boolean(
-    status?.running || status?.upload_current || (status?.message && /comput|build|load/i.test(status.message)),
+    !status?.ready &&
+      (
+        status?.running ||
+        (status?.upload_current && status.upload_current !== "idle") ||
+        (status?.message && /comput|build|load/i.test(status.message))
+      ),
   );
 
   const progressValue = useMemo(() => {
@@ -710,8 +807,8 @@ export default function LeaderboardPanel() {
   }, [status, progressValue]);
 
   return (
-    <Stack spacing={3.2}>
-      <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 }, order: 6, mt: 2.8 }}>
+    <Stack spacing={0}>
+      <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 }, order: 6, mt: 3.2 }}>
         <Stack spacing={2}>
           <SectionTitle title="Leaderboard description" />
 
@@ -773,17 +870,16 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 7 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 7, mt: 3.2 }}>
         <Stack spacing={1.8}>
           <SectionTitle
             title="Temporary submission"
-            subtitle="Upload a prediction GFF and compute a temporary preview for this browser session only."
+            subtitle="Upload your own prediction GFF, give it a model name, and compare it with the leaderboard models for the current browser session."
+            constrainSubtitle={false}
           />
 
-          <Typography color="text.secondary">
-            Temporary submissions are computed on demand and shown only on this page for the current session. They are
-            not written to persistent Space storage and are removed after refresh. For permanent inclusion, open a pull
-            request to the permanent repository.
+          <Typography color="text.secondary" sx={{ fontSize: "0.8rem", lineHeight: 1.45 }}>
+            Temporary submissions are processed one by one for all users. After processing, your uploaded model appears on this page for the current session only. It is not saved in persistent Space storage and disappears after page refresh. For permanent inclusion, open a pull request to the provided GitHub repository with your prediction file and model name.
           </Typography>
 
           <TextField
@@ -816,10 +912,12 @@ export default function LeaderboardPanel() {
             Submit
           </Button>
 
+          <Typography color="text.secondary">Queue length: {status?.upload_queue_length ?? 0}.</Typography>
+
           {uploadLoading ? (
             <Box className="score-calc-animation">
               <span className="orb" />
-              <Typography color="text.secondary">Calculating score trajectories and transcript evidence…</Typography>
+              <Typography color="text.secondary">Calculating metrics for you model...</Typography>
             </Box>
           ) : null}
 
@@ -835,7 +933,20 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 1 }}>
+
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 0, mt: 0 }}>
+        <Stack spacing={1.4}>
+          <SectionTitle title="TLDR" />
+          <Typography color="text.secondary" sx={{ fontSize: "0.92rem", lineHeight: 1.55, fontWeight: 700 }}>
+            Tiberius is the strongest model for recovering CDS regions in mRNA genes. GENATATOR is strongest for
+            recovering mRNA exons, detecting lncRNA genes, and finding multiple transcript isoforms for the same gene.
+            For the most robust annotation, run both Tiberius and GENATATOR, then use the intersection of the
+            transcripts they recover.
+          </Typography>
+        </Stack>
+      </Paper>
+
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 1, mt: 3.2 }}>
         <Stack spacing={2}>
           <Stack
             direction={{ xs: "column", lg: "row" }}
@@ -843,12 +954,32 @@ export default function LeaderboardPanel() {
             justifyContent="space-between"
             alignItems={{ xs: "stretch", lg: "center" }}
           >
-            <SectionTitle
-              title="Main metrics"
-              subtitle="The table is evaluated at a user-selected tolerance k and shows both exon and CDS branches simultaneously."
-            />
+            <Stack spacing={0.6}>
+              <SectionTitle
+                title="Main metrics"
+                subtitle="Choose the tolerance k and quickly compare all models. This table shows the most important exon and CDS scores in one place."
+              />
+            </Stack>
 
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
+            <Stack ref={mainControlsRowRef} direction={{ xs: "column", sm: "row" }} spacing={1.2}>
+
+              <Box
+                className="use-strand-control"
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.6,
+                  pr: 1.6,
+                  mr: 2.0,
+                  borderRight: "1px solid rgba(15, 118, 110, 0.18)",
+                }}
+              >
+                <Typography>Use strand</Typography>
+                <Checkbox checked={useStrand} onChange={(event) => setUseStrand(event.target.checked)} />
+              </Box>
+
+              <Box sx={{ width: { xs: 0, sm: 12 }, flex: "0 0 auto" }} />
+
               <TextField
                 label="Active k"
                 type="number"
@@ -895,7 +1026,7 @@ export default function LeaderboardPanel() {
                     <TableCell rowSpan={2} sx={{ width: 56, minWidth: 56 }}>
                       Rank
                     </TableCell>
-                    <TableCell rowSpan={2}>Model</TableCell>
+                    <TableCell rowSpan={2} sx={{ width: 280, minWidth: 280 }}>Model</TableCell>
                     <TableCell colSpan={4} align="center">
                       Exon
                     </TableCell>
@@ -920,7 +1051,20 @@ export default function LeaderboardPanel() {
                       <TableCell sx={{ width: 56, minWidth: 56 }}>{index + 1}</TableCell>
                       <TableCell>
                         <Stack direction="row" spacing={1} alignItems="center">
-                          <Typography fontWeight={760}>{row.display_name}</Typography>
+                          {row.reference_url ? (
+                            <Typography
+                              component="a"
+                              href={row.reference_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              fontWeight={760}
+                              sx={{ color: "primary.main", textDecoration: "underline" }}
+                            >
+                              {row.display_name}
+                            </Typography>
+                          ) : (
+                            <Typography fontWeight={760}>{row.display_name}</Typography>
+                          )}
                         </Stack>
                       </TableCell>
                       <TableCell
@@ -1014,12 +1158,12 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 2 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 2, mt: 3.2 }}>
         <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
               title="Metric curves"
-              subtitle="Choose the branch, metric, and models to inspect smooth trajectories over k = 0…500. Click the chart to set the active operating point."
+              subtitle="See how a selected score changes when k changes. Choose the branch, metric, and models, then click to set the active k for the rest of the leaderboard."
             />
             <Stack direction={{ xs: "column", lg: "row" }} spacing={1.2} alignItems={{ lg: "center" }}>
               <BranchTabs value={graphBranch} onChange={setGraphBranch} />
@@ -1031,7 +1175,7 @@ export default function LeaderboardPanel() {
                 SelectProps={{
                   MenuProps: {
                     PaperProps: {
-                      sx: { backgroundColor: "#f8fbfa", backdropFilter: "none" },
+                      sx: { backgroundColor: "#ffffff", opacity: 1, backdropFilter: "none" },
                     },
                   },
                 }}
@@ -1054,6 +1198,7 @@ export default function LeaderboardPanel() {
             getOptionLabel={(option) => option.display_name}
             isOptionEqualToValue={(option, value) => option.model_id === value.model_id}
             onChange={(_, value) => setSelectedModels(value.map((item) => item.model_id))}
+            slotProps={{ paper: { sx: { backgroundColor: "#ffffff", opacity: 1, backdropFilter: "none" } } }}
             renderInput={(params) => <TextField {...params} label="Models shown on the graph" />}
           />
 
@@ -1072,6 +1217,7 @@ export default function LeaderboardPanel() {
                 <XAxis dataKey="k" type="number" domain={[0, 500]} allowDecimals={false} ticks={CHART_AXIS_TICKS} />
                 <YAxis />
                 <Tooltip
+                  itemSorter={(item) => -Number(item?.value ?? -Infinity)}
                   formatter={(value) => {
                     const numeric = Number(value);
                     return Number.isFinite(numeric) ? numeric.toFixed(4) : "—";
@@ -1100,12 +1246,17 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 3 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 3, mt: 3.2 }}>
         <Stack spacing={2}>
-          <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
+          <Stack
+            direction={{ xs: "column", lg: "row" }}
+            justifyContent="space-between"
+            spacing={1.2}
+            alignItems={{ xs: "flex-start", lg: "flex-start" }}
+          >
             <SectionTitle
               title="Full metrics"
-              subtitle="Complete metric table at the active k for the models selected in the graph panel."
+              subtitle="View the complete set of scores for the selected models at the active k. Use this panel when you want more detail than the Main metrics table provides."
             />
             <BranchTabs value={fullBranch} onChange={setFullBranch} />
           </Stack>
@@ -1149,7 +1300,20 @@ export default function LeaderboardPanel() {
                     <TableRow key={row.model_id}>
                       <TableCell sx={{ width: 280, minWidth: 280 }}>
                         <Stack direction="row" spacing={1} alignItems="center">
-                          <Typography fontWeight={760}>{row.display_name}</Typography>
+                          {row.reference_url ? (
+                            <Typography
+                              component="a"
+                              href={row.reference_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              fontWeight={760}
+                              sx={{ color: "primary.main", textDecoration: "underline" }}
+                            >
+                              {row.display_name}
+                            </Typography>
+                          ) : (
+                            <Typography fontWeight={760}>{row.display_name}</Typography>
+                          )}
                         </Stack>
                       </TableCell>
                       <TableCell
@@ -1271,12 +1435,17 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 4 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 4, mt: 3.2 }}>
         <Stack spacing={2}>
-          <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
+          <Stack
+            direction={{ xs: "column", lg: "row" }}
+            justifyContent="space-between"
+            spacing={1.2}
+            alignItems={{ xs: "flex-start", lg: "flex-start" }}
+          >
             <SectionTitle
               title="Stratifier"
-              subtitle="Select a model and a biologically meaningful grouping rule to inspect branch-specific behaviour within subsets of the benchmark."
+              subtitle="Check whether a model performs differently across groups such as transcript type, strand, or chromosome. Choose a model, a branch, and a grouping rule."
             />
             <BranchTabs value={stratBranch} onChange={setStratBranch} />
           </Stack>
@@ -1355,12 +1524,17 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 5 }}>
+      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 5, mt: 3.2 }}>
         <Stack spacing={2}>
-          <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
+          <Stack
+            direction={{ xs: "column", lg: "row" }}
+            justifyContent="space-between"
+            spacing={1.2}
+            alignItems={{ xs: "flex-start", lg: "flex-start" }}
+          >
             <SectionTitle
               title="Detailed information"
-              subtitle="Transcript-level evidence and matched prediction counts per gene."
+              subtitle="Look up a ground-truth gene or transcript and see which model predictions recovered it. This panel is for checking individual biological examples, not only summary scores."
             />
             <BranchTabs
               value={detailBranch}
@@ -1583,6 +1757,10 @@ export default function LeaderboardPanel() {
             </Stack>
           )}
         </Stack>
+      </Paper>
+
+      <Paper className="glass-card" sx={{ p: { xs: 2.0, md: 2.4 }, order: 8, mt: 3.2 }}>
+        <Typography color="text.secondary">{benchmarkLaunchDateLabel}</Typography>
       </Paper>
     </Stack>
   );
