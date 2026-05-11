@@ -132,7 +132,7 @@ print(result_mrna_only["cds"][250]["segmentation-level"]["f1"])
 #   chromosome
 #   transcript_type
 
-print(result["stratifier"]["exon"]["transcript_type"]["mRNA"][250])
+print(result["stratifier"]["exon"]["transcript_type"]["mrna"][250])
 print(result["stratifier"]["exon"]["strand"]["+"][250])
 print(result["stratifier"]["cds"]["chromosome"]["NC_060944.1"][250])
 
