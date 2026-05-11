@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 import importlib.util
+import sys
 
 import datasets
 import evaluate
@@ -19,10 +20,18 @@ def _load_symbol(module_rel_path: str, symbol_name: str):
             repo_type="space",
         )
         module_path = Path(downloaded)
-    spec = importlib.util.spec_from_file_location(f"_genatator_{module_path.stem}", module_path)
+    module_name = module_path.stem
+    if str(module_path.parent) not in sys.path:
+        sys.path.insert(0, str(module_path.parent))
+    if module_name in sys.modules:
+        module = sys.modules[module_name]
+        return getattr(module, symbol_name)
+
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Cannot load module from {module_path}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return getattr(module, symbol_name)
 
