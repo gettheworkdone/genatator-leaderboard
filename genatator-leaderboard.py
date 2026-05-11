@@ -20,6 +20,12 @@ def _load_symbol(module_rel_path: str, symbol_name: str):
 
 
 class GenatatorLeaderboardMetric(evaluate.Metric):
+    def compute(self, *, pred_gff: str, true_gff: str, **kwargs) -> dict[str, Any]:
+        """
+        Bypass evaluate's batch-length validation for string path inputs.
+        """
+        return self._compute(pred_gff=pred_gff, true_gff=true_gff, **kwargs)
+
     def _resolve_gff_source(self, value: str) -> str:
         candidate = Path(value)
         if candidate.exists() and candidate.is_file():
@@ -39,12 +45,17 @@ class GenatatorLeaderboardMetric(evaluate.Metric):
         pred_gff: str,
         true_gff: str,
         k_values: list[int] | None = None,
+        use_strand: bool = True,
+        gene_biotypes: list[str] | None = None,
+        transcript_types: list[str] | None = None,
     ) -> dict[str, Any]:
         GeneLevelEvaluator = _load_symbol("gene_level_final_final_fix.py", "GeneLevelEvaluator")
         gff_text_to_dataframe = _load_symbol("backend/gff_io.py", "gff_text_to_dataframe")
 
         evaluator = GeneLevelEvaluator()
         k_values = k_values or list(range(0, 501))
+        gene_biotypes = gene_biotypes or ["protein_coding", "lncRNA"]
+        transcript_types = transcript_types or ["mRNA", "lnc_RNA"]
         pred_df = gff_text_to_dataframe(self._resolve_gff_source(pred_gff))
         true_df = gff_text_to_dataframe(self._resolve_gff_source(true_gff))
 
@@ -52,15 +63,15 @@ class GenatatorLeaderboardMetric(evaluate.Metric):
             pred_gff=pred_df,
             true_gff=true_df,
             k_values=k_values,
-            use_strand=True,
-            gene_biotypes=["protein_coding", "lncRNA"],
-            transcript_types=["mRNA", "lnc_RNA"],
+            use_strand=use_strand,
+            gene_biotypes=gene_biotypes,
+            transcript_types=transcript_types,
         )
         cds = evaluator.evaluate_gff_cds(
             pred_gff=pred_df,
             true_gff=true_df,
             k_values=k_values,
-            use_strand=True,
+            use_strand=use_strand,
             gene_biotypes=["protein_coding"],
             transcript_types=["mRNA"],
         )
@@ -69,12 +80,11 @@ class GenatatorLeaderboardMetric(evaluate.Metric):
             "exon": exon,
             "cds": cds,
             "stratifier": {
-                "exon": evaluator.build_stratifier(exon, pred_df, true_df, True, ["protein_coding", "lncRNA"], ["mRNA", "lnc_RNA"]),
-                "cds": evaluator.build_stratifier(cds, pred_df, true_df, True, ["protein_coding"], ["mRNA"]),
+                "exon": evaluator.build_stratifier(exon, pred_df, true_df, use_strand, gene_biotypes, transcript_types),
+                "cds": evaluator.build_stratifier(cds, pred_df, true_df, use_strand, ["protein_coding"], ["mRNA"]),
             },
             "detailed": {
-                "exon": evaluator.build_detailed_info(exon, pred_df, true_df, True, ["protein_coding", "lncRNA"], ["mRNA", "lnc_RNA"]),
-                "cds": evaluator.build_detailed_info(cds, pred_df, true_df, True, ["protein_coding"], ["mRNA"]),
+                "exon": evaluator.build_detailed_info(exon, pred_df, true_df, use_strand, gene_biotypes, transcript_types),
+                "cds": evaluator.build_detailed_info(cds, pred_df, true_df, use_strand, ["protein_coding"], ["mRNA"]),
             },
         }
-
