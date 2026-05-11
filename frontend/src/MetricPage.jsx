@@ -53,7 +53,7 @@ const EVALUATE_SNIPPET = `# How to use this metric with Hugging Face Evaluate
 
 import evaluate
 
-metric = evaluate.load("shmelev/genatator-leaderboard")
+metric = evaluate.load("spaces/shmelev/genatator-leaderboard")
 
 pred_gff_path = "/tmp/predictions.gff"
 true_gff_path = "/tmp/reference.gff"
