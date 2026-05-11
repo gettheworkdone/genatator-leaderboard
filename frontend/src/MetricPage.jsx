@@ -23,11 +23,8 @@ const EVALUATE_SNIPPET = `# How to use this metric with Hugging Face Evaluate
 # Install dependencies:
 #   pip install evaluate
 #
-# Load directly from Hugging Face Hub (Space repo):
-#   spaces/shmelev/genatator-leaderboard
-#
-# If Colab raises FileNotFoundError, upgrade dependencies first:
-#   pip install -U evaluate huggingface_hub datasets
+# Load the metric from the Hugging Face repository:
+#   shmelev/genatator-leaderboard
 #
 # The metric expects local GFF/GFF3-style files.
 # Pass file paths as plain strings.
