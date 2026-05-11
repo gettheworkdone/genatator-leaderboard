@@ -6,11 +6,19 @@ import importlib.util
 
 import datasets
 import evaluate
+from huggingface_hub import hf_hub_download
 
 
 def _load_symbol(module_rel_path: str, symbol_name: str):
     root = Path(__file__).resolve().parent
     module_path = root / module_rel_path
+    if not module_path.exists():
+        downloaded = hf_hub_download(
+            repo_id="shmelev/genatator-leaderboard",
+            filename=module_rel_path,
+            repo_type="space",
+        )
+        module_path = Path(downloaded)
     spec = importlib.util.spec_from_file_location(f"_genatator_{module_path.stem}", module_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Cannot load module from {module_path}")
