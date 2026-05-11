@@ -2,17 +2,20 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
+  IconButton,
   Button,
   Grid,
   Paper,
   Stack,
   TextField,
   Typography,
+  Tooltip,
 } from "@mui/material";
 
 import CalculateIcon from "@mui/icons-material/Calculate";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 const EVALUATE_SNIPPET = `# How to use this metric with Hugging Face Evaluate
 #
 # This metric supports a Python API through Hugging Face Evaluate.
@@ -307,10 +310,71 @@ function SectionTitle({ icon = null, title, subtitle = null }) {
   );
 }
 
-function CodePanel({ children }) {
+function PythonSnippet({ code }) {
+  const KEYWORDS = new Set([
+    "import",
+    "from",
+    "as",
+    "True",
+    "False",
+    "None",
+    "for",
+    "in",
+    "if",
+    "else",
+    "print",
+  ]);
   return (
-    <Box component="pre" className="code-panel mono">
-      {children}
+    <>
+      {code.split("\n").map((line, lineIdx) => (
+        <React.Fragment key={`line-${lineIdx}`}>
+          {line.split(/(\s+|"[^"]*"|'[^']*'|#.*$|\b[A-Za-z_][A-Za-z0-9_]*\b|\d+)/g).map((token, tokenIdx) => {
+            if (!token) {
+              return null;
+            }
+            let className = "";
+            if (token.startsWith("#")) className = "py-comment";
+            else if (/^"[^"]*"|'[^']*'$/.test(token)) className = "py-string";
+            else if (/^\d+$/.test(token)) className = "py-number";
+            else if (KEYWORDS.has(token)) className = "py-keyword";
+            return (
+              <span className={className} key={`line-${lineIdx}-token-${tokenIdx}`}>
+                {token}
+              </span>
+            );
+          })}
+          {lineIdx < code.split("\n").length - 1 ? "\n" : null}
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
+
+function CodePanel({ children }) {
+  const [copied, setCopied] = useState(false);
+  const code = typeof children === "string" ? children : String(children ?? "");
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  }, [code]);
+
+  return (
+    <Box className="code-panel-wrapper">
+      <Tooltip title={copied ? "Copied" : "Copy code"}>
+        <IconButton size="small" className="code-copy-btn" onClick={handleCopy} aria-label="Copy code snippet">
+          <ContentCopyIcon fontSize="inherit" />
+        </IconButton>
+      </Tooltip>
+      <Box component="pre" className="code-panel mono code-panel--python">
+        <code>
+          <PythonSnippet code={code} />
+        </code>
+      </Box>
     </Box>
   );
 }
