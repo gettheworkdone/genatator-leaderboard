@@ -79,102 +79,139 @@ const SORT_METRICS = [
 ];
 
 const LEADERBOARD_DESCRIPTION_HTML = String.raw`
-<section id="leaderboard-description"> 
+<section id="metric-description">
   <p>
-    This leaderboard compares annotation models on human chromosome 20 (NC_060944.1) from the T2T
-    genome assembly GCF_009914755.1. The evaluation is restricted to mRNA and lncRNA genes and measures
-    how well each model recovers the transcripts of the evaluated genes. All files required for the leaderboard
-    evaluation are included in this repository. The page is organized from a compact summary to more detailed
-    biological context, so you can first compare models quickly and then inspect where the differences come from.
+    This metric is designed for genome annotation cases where a prediction can look locally accurate while still being
+    biologically wrong. A small shift at a transcript, exon, or coding boundary may preserve much of the basewise signal,
+    but it can still change splice structure, disrupt the coding frame, or alter the translated product. For that reason,
+    the metric does not rely on per-nucleotide comparison. Instead, it was designed to account for the main biological
+    constraints of gene annotation. Splice-site boundaries are assessed strictly, while the tolerance parameter \(k\) is
+    introduced to reflect the fact that transcription start and end positions can vary in real cells.
   </p>
 
   <p>
-    The first panel, <strong>Main metrics</strong>, gives the fastest overview. You can specify the active tolerance
-    <strong>k</strong>, and all metrics across the leaderboard are updated to that same value. Here, <strong>k</strong>
-    is the allowed deviation, in base pairs, between predicted and reference transcript boundaries. In this context,
-    transcript start means the first transcribed nucleotide, and transcript end means the last transcribed nucleotide.
-    These positions are biologically less sharply defined than splice sites because transcription initiation and
-    termination can vary across molecules, while annotations represent them as fixed coordinates. Therefore,
-    smaller k values require more precise transcript boundary recovery, while larger k values allow more tolerant
-    matching.
+    The metric has two branches. The <strong>exon branch</strong> evaluates transcript structure for mRNA and lncRNA genes.
+    For mRNA transcripts, this includes both UTR exons and coding exons. The <strong>CDS branch</strong> evaluates the
+    coding sequence structure of mRNA transcripts. In simple terms, the exon branch asks whether the model recovers the
+    transcribed exon structure, while the CDS branch asks whether it recovers the protein-coding structure.
   </p>
 
   <p>
-    The Main metrics table shows the <strong>exon</strong> and <strong>CDS</strong> branches side by side. The exon
-    branch measures recovery of transcript structure for mRNA and lncRNA genes. For mRNA transcripts, this
-    includes UTR exons as well as coding exons. The CDS branch focuses only on the coding sequence structure
-    of mRNA transcripts. In other words, the exon side tells you how well a model recovers the full transcribed
-    exon structure, while the CDS side tells you how well it recovers the protein-coding structure.
+    Let \(k \ge 0\) be the allowed boundary deviation measured in base pairs. In this context, transcript start means the
+    first transcribed nucleotide, and transcript end means the last transcribed nucleotide. These positions are not always
+    sharply defined in biology, because transcription initiation and termination can vary across molecules. This is different
+    from splice sites, which correspond to much more precise exon-intron boundaries. Therefore, the metric is evaluated at
+    a user-specified value of \(k\), where smaller values require stricter boundary agreement and larger values allow more
+    tolerant matching.
   </p>
 
   <p>
-    Under each branch, <strong>F1 w/o seg.</strong> is the interval-level F1 score before checking internal exon or
-    CDS structure. Conceptually, this is similar to comparing BED-like intervals that contain only transcript
-    starts and ends. It asks whether the predicted transcript or coding interval is placed in the right genomic
-    region, without asking whether the internal exon or CDS chain is correct. <strong>MI w/o seg.</strong> is the
-    corresponding multi-isoform count at this interval level. <strong>F1 with seg.</strong> is stricter. After a
-    prediction is matched by interval, it must also pass the segmentation check. This score asks whether the model
-    not only found the right region, but also reconstructed the relevant exon or CDS structure.
-    <strong>MI with seg.</strong> is the multi-isoform count after the same structural check. You can also use
-    <strong>Sort rows</strong> to rank models by the metric you care about most.
+    At a given value of \(k\), the metric first computes an <strong>interval-level</strong> score. In the exon branch,
+    this is similar to comparing BED-like intervals that contain only transcript starts and ends. It asks whether a predicted
+    transcript interval falls close enough to a reference transcript interval, without checking the internal exon structure.
+    In the CDS branch, the same idea is applied to the coding span of an mRNA transcript. A predicted interval is considered
+    matched only if its relevant boundaries satisfy the chosen tolerance. Therefore, even if a prediction covers almost the
+    entire reference transcript, it is still counted as unmatched if one of its relevant boundaries lies outside the specified
+    \(k\) by even one additional nucleotide.
   </p>
 
   <p>
-    The <strong>Use strand</strong> option controls whether strand information is used during matching. When it is
-    enabled, a prediction must match the reference on the same chromosome, coordinates, and strand. This is the
-    strictest setting for models that report strand. When it is disabled, strand is ignored during matching. This is
-    useful for models that do not return strand information in their predictions, such as SegmentNT or NTv3,
-    because otherwise they would be penalized for information they never provide.
+    Let \(TP_{\mathrm{int}}(k)\) be the number of matched predicted <strong>transcripts</strong>. Let
+    \(FP_{\mathrm{int}}(k)\) be the number of predicted <strong>transcripts</strong> that are not matched. Let
+    \(TP_{\mathrm{gene}}(k)\) be the number of reference <strong>genes</strong> for which at least one transcript is matched.
+    Let \(FN_{\mathrm{gene}}(k)\) be the number of reference <strong>genes</strong> for which no transcript is matched.
+    Then
+  </p>
+
+  <div class="equation">
+    \[
+      \mathrm{Precision}(k)=
+      \frac{TP_{\mathrm{int}}(k)}
+      {TP_{\mathrm{int}}(k)+FP_{\mathrm{int}}(k)},
+      \qquad
+      \mathrm{Recall}(k)=
+      \frac{TP_{\mathrm{gene}}(k)}
+      {TP_{\mathrm{gene}}(k)+FN_{\mathrm{gene}}(k)},
+    \]
+    \[
+      F_{1}(k)=
+      \frac{2\,\mathrm{Precision}(k)\,\mathrm{Recall}(k)}
+      {\mathrm{Precision}(k)+\mathrm{Recall}(k)}.
+    \]
+  </div>
+
+  <p>
+    Precision and recall are intentionally defined over different biological entities. Precision is calculated over predicted
+    <strong>transcripts</strong>, because false positives are naturally defined as predicted transcript objects that fail to
+    match the reference at the chosen \(k\). Recall, however, is calculated over reference <strong>genes</strong>, not over
+    reference transcripts. This is necessary because multiple annotated isoforms of the same gene can have identical transcript
+    start and end coordinates. At the interval level, where internal segmentation is not considered, such isoforms cannot be
+    distinguished by their outer interval alone. Therefore, a transcript-level false negative would be ambiguous. The metric
+    could not determine which isoform with the same outer coordinates was missed. Gene-level recall avoids this ambiguity.
+    A reference gene is counted as recovered when at least one of its transcripts is matched.
   </p>
 
   <p>
-    The next panel, <strong>Metric curves</strong>, shows how a selected metric changes across different values of
-    <strong>k</strong>. This is useful because two models can look similar at one tolerance but behave very differently
-    across the full range. A model that performs well at small k values makes precise boundary predictions.
-    A model that improves only at larger k values may still find approximately correct regions, but with less
-    accurate boundaries. You can move your mouse over the curves to inspect values at different tolerances, and
-    you can click on the curve to automatically select the k value that should be used by all other tables across
-    the leaderboard.
+    This convention also gives a consistent interpretation to models that predict several alternative transcripts with the
+    same start and end positions. At the interval level, those predictions are indistinguishable by boundaries alone. Since
+    \(TP_{\mathrm{int}}(k)\) is counted over predicted transcript objects, each predicted transcript whose interval matches
+    the reference can contribute to the number of matched predictions. The interval-level score therefore evaluates whether
+    predicted transcript intervals are supported, but it does not claim to resolve alternative splicing when isoforms share
+    the same outer coordinates.
   </p>
 
   <p>
-    The <strong>Full metrics</strong> panel expands the selected k value into a more complete table. The branch tabs
-    switch between exon and CDS results. The <strong>Interval level</strong> block reports precision, recall, F1, and
-    MI before the segmentation check. Precision is calculated over predicted transcripts. It tells you what fraction
-    of transcript predictions are matched to the reference. Recall is calculated over reference genes. It tells you
-    what fraction of annotated genes are recovered by at least one matched transcript. F1 summarizes the balance
-    between transcript-level precision and gene-level recall. MI reports how many multi-isoform genes are recovered.
-    The <strong>Segmentation level</strong> block reports the same metrics after requiring correct internal exon or CDS
-    structure. The <strong>Exact part level</strong> block takes the set of exon intervals in the exon branch, or the set
-    of CDS intervals in the CDS branch, separately from predictions and ground truth. It then calculates precision,
-    recall, and F1 from exact interval matches. A more detailed definition of this part-level calculation is provided
-    in the metric description section.
+    The next step is <strong>segmentation-aware evaluation</strong>. Interval matching alone is not enough, because a model
+    may find the right genomic region while still predicting the wrong exon chain or CDS. In the exon branch, the
+    prediction must reconstruct the exon structure after allowing tolerance only at the outer transcript boundaries. Internal
+    splice-site boundaries must still be correct. In the CDS branch, the CDS must match exactly, because coding boundary
+    errors can change the encoded protein. This segmentation-aware step makes it possible to distinguish isoforms with the
+    same transcript start and end positions when they differ in internal exon or CDS structure. Importantly, the calculation
+    principle remains the same: precision is still calculated over predicted transcripts, recall is still calculated over
+    reference genes, and the same F1 formula is applied after the structural filter has been added.
   </p>
 
   <p>
-    The <strong>Stratifier</strong> panel helps you find out where a model may perform better or worse inside the
-    evaluated annotation. You choose a model, a branch, a k value, and a grouping rule such as transcript type,
-    strand, or chromosome. The same metrics from the main and full tables are then recalculated separately inside
-    each selected group. This makes it easier to see whether an overall score is stable across biological categories
-    or whether it is driven mainly by particular subsets, such as mRNA genes, lncRNA genes, forward-strand
-    transcripts, reverse-strand transcripts, or a specific chromosome group.
+    The metric also reports <strong>multi-isoform recovery</strong> (MI). MI is calculated only for genes that really have
+    multiple distinct isoforms in the reference annotation. A gene contributes to MI only if the prediction recovers at least
+    two distinct transcript objects that match at least two distinct annotated isoforms of that gene. Therefore, MI without
+    segmentation measures whether multiple isoforms are recovered after interval matching, while MI with segmentation
+    measures whether multiple isoforms are recovered after the structural check as well.
   </p>
 
   <p>
-    The <strong>Detailed information</strong> panel lets you inspect recovery at the level of individual ground-truth
-    genes and transcripts. It starts with the reference gene list. After opening a gene, you can inspect its annotated
-    transcripts and their basic attributes. After opening a transcript, you can see which predictions from each model
-    matched that ground-truth transcript and the smallest k value at which each match appears. This panel is useful
-    when you want to check which model recovered a particular transcript, compare matched predictions for the same
-    reference object, or understand a specific biological example beyond the aggregate scores.
+    Finally, the metric reports <strong>exact part-level</strong> scores. For a chosen branch \(B\), let
+    \(S_{\mathrm{pred}}^{B}\) be the set of all unique predicted intervals of that branch pooled across transcripts, and let
+    \(S_{\mathrm{true}}^{B}\) be the corresponding set of unique reference intervals. In the exon branch, these sets contain
+    exon intervals. In the CDS branch, these sets contain CDS intervals. A <em>true positive</em> is a predicted interval in
+    \(S_{\mathrm{pred}}^{B}\) that exactly matches an interval in \(S_{\mathrm{true}}^{B}\). A <em>false positive</em> is a
+    predicted interval with no exact reference match. A <em>false negative</em> is a reference interval that is not recovered
+    by any predicted interval. If \(TP_{\mathrm{part}}^{B}\), \(FP_{\mathrm{part}}^{B}\), and \(FN_{\mathrm{part}}^{B}\)
+    denote these counts, then
   </p>
 
+  <div class="equation">
+    \[
+      \mathrm{Precision}_{\mathrm{part}}^{B}=
+      \frac{TP_{\mathrm{part}}^{B}}
+      {TP_{\mathrm{part}}^{B}+FP_{\mathrm{part}}^{B}},
+      \qquad
+      \mathrm{Recall}_{\mathrm{part}}^{B}=
+      \frac{TP_{\mathrm{part}}^{B}}
+      {TP_{\mathrm{part}}^{B}+FN_{\mathrm{part}}^{B}},
+    \]
+    \[
+      F_{1,\mathrm{part}}^{B}=
+      \frac{2\,\mathrm{Precision}_{\mathrm{part}}^{B}\,\mathrm{Recall}_{\mathrm{part}}^{B}}
+      {\mathrm{Precision}_{\mathrm{part}}^{B}+\mathrm{Recall}_{\mathrm{part}}^{B}}.
+    \]
+  </div>
+
   <p>
-    The final panel, <strong>Temporary submission</strong>, lets you upload your own prediction GFF and assign it a
-    model name for the current session. The uploaded prediction is evaluated on demand and appears together with
-    the other models in the tables and curves. It is not stored permanently and disappears after page refresh. To add
-    a model to the leaderboard permanently, you have to open a pull request with your predictions and model name
-    to the provided GitHub repository.
+    These part-level scores answer a narrower question than transcript-level evaluation. They show whether the model found
+    the correct exon or CDS pieces, even if it failed to assemble those pieces into the correct full transcript. Together,
+    interval-level F1, segmentation-aware F1, MI, and exact part-level scores give a rigorous but readable picture of
+    annotation quality.
   </p>
 </section>
 `;
@@ -720,7 +757,11 @@ export default function LeaderboardPanel() {
         return;
       }
 
-      setUploadMessage(payload.message || "Submission queued.");
+      setTemporaryPreviews((current) => {
+        const next = current.filter((item) => item.model?.model_id !== payload.model?.model_id);
+        return [...next, payload];
+      });
+      setUploadMessage("Temporary preview loaded.");
       setUploadFile(null);
       setUploadModelName("");
 
@@ -728,7 +769,6 @@ export default function LeaderboardPanel() {
         uploadInputRef.current.value = "";
       }
 
-      await reloadLeaderboard();
     } catch (error) {
       setUploadMessage(error?.message || "Upload failed.");
     } finally {
@@ -737,7 +777,12 @@ export default function LeaderboardPanel() {
   };
 
   const showProgress = Boolean(
-    status?.running || status?.upload_current || (status?.message && /comput|build|load/i.test(status.message)),
+    !status?.ready &&
+      (
+        status?.running ||
+        (status?.upload_current && status.upload_current !== "idle") ||
+        (status?.message && /comput|build|load/i.test(status.message))
+      ),
   );
 
   const progressValue = useMemo(() => {
@@ -869,9 +914,7 @@ export default function LeaderboardPanel() {
             Submit
           </Button>
 
-          <Typography color="text.secondary">
-            Queue length: {status?.upload_queue_length ?? 0}. Current workload: {status?.upload_current || "idle"}.
-          </Typography>
+          <Typography color="text.secondary">Queue length: {status?.upload_queue_length ?? 0}.</Typography>
 
           {uploadLoading ? (
             <Box className="score-calc-animation">
@@ -898,7 +941,7 @@ export default function LeaderboardPanel() {
           <SectionTitle title="TLDR" />
           <Typography color="text.secondary" sx={{ fontSize: "0.92rem", lineHeight: 1.55, fontWeight: 700 }}>
             Tiberius is the strongest model for recovering CDS regions in mRNA genes. GENATATOR is strongest for
-            recovering mRNA UTRs, detecting lncRNA genes, and finding multiple transcript isoforms for the same gene.
+            recovering mRNA exons, detecting lncRNA genes, and finding multiple transcript isoforms for the same gene.
             For the most robust annotation, run both Tiberius and GENATATOR, then use the intersection of the
             transcripts they recover.
           </Typography>
