@@ -2,24 +2,55 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
+  IconButton,
   Button,
   Grid,
   Paper,
   Stack,
   TextField,
   Typography,
+  Tooltip,
 } from "@mui/material";
 
 import CalculateIcon from "@mui/icons-material/Calculate";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
-const EVALUATE_SNIPPET = `# How to use this metric with Evaluate
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+const EVALUATE_SNIPPET = `# How to use this metric with Hugging Face Evaluate
+#
 # This metric supports a Python API through Hugging Face Evaluate.
 #
-# 1) Install dependencies: pip install evaluate
-# 2) Load the metric from Hugging Face repo shmelev/genatator-leaderboard.
-# 3) Pass local file paths as plain strings and compute everything in one call.
+# Install dependencies:
+#   pip install evaluate
 #
+# Load the metric from the Hugging Face repository:
+#   shmelev/genatator-leaderboard
+#
+# The metric expects local GFF/GFF3-style files.
+# Pass file paths as plain strings.
+#
+# Main parameters:
+#   pred_gff: path to the prediction GFF/GFF3 file.
+#   true_gff: path to the ground-truth GFF/GFF3 file.
+#   k_values: list of boundary tolerances, in base pairs.
+#             For example, [0, 50, 100, 250, 500].
+#   use_strand: whether strand must match between prediction and reference.
+#               Use True for strand-aware evaluation.
+#               Use False for models that do not report strand information.
+#   gene_biotypes: optional filter for gene biotypes.
+#   transcript_types: optional filter for transcript types.
+#
+# By default, the leaderboard uses:
+#   use_strand=True
+#   exon branch: mRNA and lnc_RNA transcripts from protein_coding and lncRNA genes
+#   CDS branch: mRNA transcripts from protein_coding genes
+#
+# The result contains:
+#   result["exon"]       -> exon-branch metrics by k
+#   result["cds"]        -> CDS-branch metrics by k
+#   result["stratifier"] -> grouped metrics by strand, chromosome, and transcript type
+#   result["detailed"]   -> transcript-level matching information
+
 import evaluate
 
 metric = evaluate.load("shmelev/genatator-leaderboard")
@@ -27,49 +58,152 @@ metric = evaluate.load("shmelev/genatator-leaderboard")
 pred_gff_path = "/tmp/predictions.gff"
 true_gff_path = "/tmp/reference.gff"
 
-# Compute both branches through Evaluate.
+
+# ---------------------------------------------------------------------
+# 1) Leaderboard-style evaluation
+# ---------------------------------------------------------------------
+# This is the standard setting used for the leaderboard.
+# It evaluates both exon and CDS branches and returns all outputs.
+
 result = metric.compute(
     pred_gff=pred_gff_path,
     true_gff=true_gff_path,
     k_values=list(range(0, 501)),
+    use_strand=True,
 )
 
+# Main exon-branch scores at k = 250
 print(result["exon"][250]["interval-level"]["f1"])
+print(result["exon"][250]["segmentation-level"]["f1"])
+print(result["exon"][250]["interval-level"]["mi"])
+print(result["exon"][250]["segmentation-level"]["mi"])
+
+# Main CDS-branch scores at k = 250
+print(result["cds"][250]["interval-level"]["f1"])
 print(result["cds"][250]["segmentation-level"]["f1"])
+print(result["cds"][250]["interval-level"]["mi"])
+print(result["cds"][250]["segmentation-level"]["mi"])
 
-# Use stratifier output returned by Evaluate.
+# Exact part-level scores
+print(result["exon"][250]["part-level"]["f1"])
+print(result["cds"][250]["part-level"]["f1"])
+
+
+# ---------------------------------------------------------------------
+# 2) Evaluation without strand matching
+# ---------------------------------------------------------------------
+# Use this for models that do not provide strand information,
+# for example SegmentNT-like or NTv3-like outputs.
+
+result_no_strand = metric.compute(
+    pred_gff=pred_gff_path,
+    true_gff=true_gff_path,
+    k_values=[0, 50, 100, 250, 500],
+    use_strand=False,
+)
+
+print(result_no_strand["exon"][250]["interval-level"]["f1"])
+
+
+# ---------------------------------------------------------------------
+# 3) Custom filtering
+# ---------------------------------------------------------------------
+# You can restrict evaluation to selected gene biotypes and transcript types.
+# For example, this focuses on mRNA transcripts from protein-coding genes.
+
+result_mrna_only = metric.compute(
+    pred_gff=pred_gff_path,
+    true_gff=true_gff_path,
+    k_values=[250],
+    use_strand=True,
+    gene_biotypes=["protein_coding"],
+    transcript_types=["mRNA"],
+)
+
+print(result_mrna_only["exon"][250]["segmentation-level"]["f1"])
+print(result_mrna_only["cds"][250]["segmentation-level"]["f1"])
+
+
+# ---------------------------------------------------------------------
+# 4) Stratifier output
+# ---------------------------------------------------------------------
+# Stratifier returns the same metrics, but grouped by biological rules:
+#   strand
+#   chromosome
+#   transcript_type
+
 print(result["stratifier"]["exon"]["transcript_type"]["mRNA"][250])
+print(result["stratifier"]["exon"]["strand"]["+"][250])
+print(result["stratifier"]["cds"]["chromosome"]["NC_060944.1"][250])
 
-# Use detailed transcript output returned by Evaluate.
-print(len(result["detailed"]["exon"]), list(result["detailed"]["exon"].keys())[:3])`;
+
+# ---------------------------------------------------------------------
+# 5) Detailed transcript-level output
+# ---------------------------------------------------------------------
+# Detailed output lets you inspect which predictions matched
+# each ground-truth transcript and at which minimal k.
+
+detailed_exon = result["detailed"]["exon"]
+
+print(len(detailed_exon))
+print(list(detailed_exon.keys())[:3])
+
+first_tx_id = list(detailed_exon.keys())[0]
+print(detailed_exon[first_tx_id])
+
+# Example fields:
+#   chromosome
+#   start
+#   end
+#   strand
+#   gene_id
+#   transcript_type
+#   interval-level["predictions"]
+#   segmentation-level["predictions"]`
 
 const METRIC_DESCRIPTION_HTML = String.raw`
 <section id="metric-description">
   <p>
-    This metric is built for the situation in which a prediction may look locally accurate and still be biologically wrong.
-    In genome annotation, a small shift at a transcript, exon, or coding boundary can preserve much of the basewise signal
-    while changing splice structure, coding frame, or the translated product. For that reason, we do not perform per-nucleotide
-    comparisons. Instead, it treats reconstructed transcript objects and their structural parts as the primary
-    units of evaluation.
+    This metric is designed for genome annotation cases where a prediction can look locally accurate while still being
+    biologically wrong. A small shift at a transcript, exon, or coding boundary may preserve much of the basewise signal,
+    but it can still change splice structure, disrupt the coding frame, or alter the translated product. For that reason,
+    the metric does not rely on per-nucleotide comparison. Instead, it was designed to account for the main biological
+    constraints of gene annotation. Splice-site boundaries are assessed strictly, while the tolerance parameter \(k\) is
+    introduced to reflect the fact that transcription start and end positions can vary in real cells.
   </p>
 
   <p>
-    The metric is reported in two branches. The <strong>exon branch</strong> asks whether the predicted annotation recovers
-    transcript architecture at the exon level, including both protein-coding and long non-coding transcripts. The
-    <strong>CDS branch</strong> asks whether the predicted annotation recovers the coding structure of mRNA transcripts.
-    This distinction matters biologically: the exon branch rewards recovery of the full transcribed structure, whereas the
-    CDS branch focuses on the part of the transcript that determines the encoded protein.
+    The metric has two branches. The <strong>exon branch</strong> evaluates transcript structure for mRNA and lncRNA genes.
+    For mRNA transcripts, this includes both UTR exons and coding exons. The <strong>CDS branch</strong> evaluates the
+    coding sequence structure of mRNA transcripts. In simple terms, the exon branch asks whether the model recovers the
+    transcribed exon structure, while the CDS branch asks whether it recovers the protein-coding structure.
   </p>
 
   <p>
-    Let \(k \ge 0\) be a boundary tolerance measured in base pairs. At a given value of \(k\), the metric first computes an
-    <strong>interval-level</strong> score. In the exon branch, a predicted transcript interval is counted as matched when its
-    boundaries fall within tolerance \(k\) relative to at least one reference transcript interval. In the CDS branch, the same
-    idea is applied to the coding span of the transcript, so the score reflects recovery of coding extent rather than full
-    transcript extent. Let \(TP_{\mathrm{int}}(k)\) be the number of matched predicted transcripts, let
-    \(FP_{\mathrm{int}}(k)\) be the number of predicted transcripts that are not matched, let \(TP_{\mathrm{gene}}(k)\) be the
-    number of reference genes for which at least one transcript is matched, and let \(FN_{\mathrm{gene}}(k)\) be the number
-    of reference genes with no matched transcript. Then
+    Let \(k \ge 0\) be the allowed boundary deviation measured in base pairs. In this context, transcript start means the
+    first transcribed nucleotide, and transcript end means the last transcribed nucleotide. These positions are not always
+    sharply defined in biology, because transcription initiation and termination can vary across molecules. This is different
+    from splice sites, which correspond to much more precise exon-intron boundaries. Therefore, the metric is evaluated at
+    a user-specified value of \(k\), where smaller values require stricter boundary agreement and larger values allow more
+    tolerant matching.
+  </p>
+
+  <p>
+    At a given value of \(k\), the metric first computes an <strong>interval-level</strong> score. In the exon branch,
+    this is similar to comparing BED-like intervals that contain only transcript starts and ends. It asks whether a predicted
+    transcript interval falls close enough to a reference transcript interval, without checking the internal exon structure.
+    In the CDS branch, the same idea is applied to the coding span of an mRNA transcript. A predicted interval is considered
+    matched only if its relevant boundaries satisfy the chosen tolerance. Therefore, even if a prediction covers almost the
+    entire reference transcript, it is still counted as unmatched if one of its relevant boundaries lies outside the specified
+    \(k\) by even one additional nucleotide.
+  </p>
+
+  <p>
+    Let \(TP_{\mathrm{int}}(k)\) be the number of matched predicted <strong>transcripts</strong>. Let
+    \(FP_{\mathrm{int}}(k)\) be the number of predicted <strong>transcripts</strong> that are not matched. Let
+    \(TP_{\mathrm{gene}}(k)\) be the number of reference <strong>genes</strong> for which at least one transcript is matched.
+    Let \(FN_{\mathrm{gene}}(k)\) be the number of reference <strong>genes</strong> for which no transcript is matched.
+    Then
   </p>
 
   <div class="equation">
@@ -90,37 +224,53 @@ const METRIC_DESCRIPTION_HTML = String.raw`
   </div>
 
   <p>
-    This definition is deliberate. Precision is computed over predicted transcripts because each prediction is a biological
-    claim that may be correct or spurious. Recall is computed over reference genes because the biologically relevant question
-    is whether a gene has been recovered at all, not whether every reference transcript has been counted independently.
-    The score therefore balances overprediction against failure to recover annotated genes.
+    Precision and recall are intentionally defined over different biological entities. Precision is calculated over predicted
+    <strong>transcripts</strong>, because false positives are naturally defined as predicted transcript objects that fail to
+    match the reference at the chosen \(k\). Recall, however, is calculated over reference <strong>genes</strong>, not over
+    reference transcripts. This is necessary because multiple annotated isoforms of the same gene can have identical transcript
+    start and end coordinates. At the interval level, where internal segmentation is not considered, such isoforms cannot be
+    distinguished by their outer interval alone. Therefore, a transcript-level false negative would be ambiguous. The metric
+    could not determine which isoform with the same outer coordinates was missed. Gene-level recall avoids this ambiguity.
+    A reference gene is counted as recovered when at least one of its transcripts is matched.
   </p>
 
   <p>
-    The second view is <strong>segmentation-aware evaluation</strong>. Here, interval matching alone is not enough: the
-    prediction must also reconstruct the relevant internal structure. In the exon branch, this means that the exon chain must
-    agree after allowing the chosen tolerance only at the outer transcript boundaries; internal splice structure must still be
-    correct. In the CDS branch, the ordered CDS chain must match exactly. This distinction is biologically necessary because
-    approximate localization and correct structural reconstruction are not the same thing. A model may find the right locus
-    and still recover the wrong mature transcript or the wrong coding organization.
+    This convention also gives a consistent interpretation to models that predict several alternative transcripts with the
+    same start and end positions. At the interval level, those predictions are indistinguishable by boundaries alone. Since
+    \(TP_{\mathrm{int}}(k)\) is counted over predicted transcript objects, each predicted transcript whose interval matches
+    the reference can contribute to the number of matched predictions. The interval-level score therefore evaluates whether
+    predicted transcript intervals are supported, but it does not claim to resolve alternative splicing when isoforms share
+    the same outer coordinates.
   </p>
 
   <p>
-    The metric also reports <strong>multi-isoform recovery</strong> (MI). This quantity is evaluated only for genes that are
-    genuinely multi-isoform in the reference annotation. A gene contributes to MI only when the prediction recovers at least
-    two distinct transcript objects that match at least two distinct annotated isoforms of that same gene. Accordingly,
-    MI without segmentation measures isoform multiplicity after interval matching, whereas MI with segmentation measures
-    isoform multiplicity only after the structural filter described above has also been passed.
+    The next step is <strong>segmentation-aware evaluation</strong>. Interval matching alone is not enough, because a model
+    may find the right genomic region while still predicting the wrong exon chain or CDS. In the exon branch, the
+    prediction must reconstruct the exon structure after allowing tolerance only at the outer transcript boundaries. Internal
+    splice-site boundaries must still be correct. In the CDS branch, the CDS must match exactly, because coding boundary
+    errors can change the encoded protein. This segmentation-aware step makes it possible to distinguish isoforms with the
+    same transcript start and end positions when they differ in internal exon or CDS structure. Importantly, the calculation
+    principle remains the same: precision is still calculated over predicted transcripts, recall is still calculated over
+    reference genes, and the same F1 formula is applied after the structural filter has been added.
+  </p>
+
+  <p>
+    The metric also reports <strong>multi-isoform recovery</strong> (MI). MI is calculated only for genes that really have
+    multiple distinct isoforms in the reference annotation. A gene contributes to MI only if the prediction recovers at least
+    two distinct transcript objects that match at least two distinct annotated isoforms of that gene. Therefore, MI without
+    segmentation measures whether multiple isoforms are recovered after interval matching, while MI with segmentation
+    measures whether multiple isoforms are recovered after the structural check as well.
   </p>
 
   <p>
     Finally, the metric reports <strong>exact part-level</strong> scores. For a chosen branch \(B\), let
     \(S_{\mathrm{pred}}^{B}\) be the set of all unique predicted intervals of that branch pooled across transcripts, and let
-    \(S_{\mathrm{true}}^{B}\) be the corresponding set of unique reference intervals. In the exon branch these are exon intervals;
-    in the CDS branch these are CDS intervals. A <em>true positive</em> is a predicted interval in \(S_{\mathrm{pred}}^{B}\)
-    that exactly matches an interval in \(S_{\mathrm{true}}^{B}\). A <em>false positive</em> is a predicted interval with no
-    exact reference match. A <em>false negative</em> is a reference interval that is not recovered by any predicted interval.
-    If \(TP_{\mathrm{part}}^{B}\), \(FP_{\mathrm{part}}^{B}\), and \(FN_{\mathrm{part}}^{B}\) denote these counts, then
+    \(S_{\mathrm{true}}^{B}\) be the corresponding set of unique reference intervals. In the exon branch, these sets contain
+    exon intervals. In the CDS branch, these sets contain CDS intervals. A <em>true positive</em> is a predicted interval in
+    \(S_{\mathrm{pred}}^{B}\) that exactly matches an interval in \(S_{\mathrm{true}}^{B}\). A <em>false positive</em> is a
+    predicted interval with no exact reference match. A <em>false negative</em> is a reference interval that is not recovered
+    by any predicted interval. If \(TP_{\mathrm{part}}^{B}\), \(FP_{\mathrm{part}}^{B}\), and \(FN_{\mathrm{part}}^{B}\)
+    denote these counts, then
   </p>
 
   <div class="equation">
@@ -141,10 +291,10 @@ const METRIC_DESCRIPTION_HTML = String.raw`
   </div>
 
   <p>
-    These part-level scores are not a replacement for transcript-level evaluation. Rather, they answer a narrower question:
-    did the model identify the correct exon or CDS pieces, even if it failed to assemble them into the correct full transcript?
-    Taken together, interval-level F1, segmentation-aware F1, multi-isoform recovery, and exact part-level scores provide a
-    mathematically explicit and biologically coherent picture of annotation quality.
+    These part-level scores answer a narrower question than transcript-level evaluation. They show whether the model found
+    the correct exon or CDS pieces, even if it failed to assemble those pieces into the correct full transcript. Together,
+    interval-level F1, segmentation-aware F1, MI, and exact part-level scores give a rigorous but readable picture of
+    annotation quality.
   </p>
 </section>`;
 
@@ -160,10 +310,71 @@ function SectionTitle({ icon = null, title, subtitle = null }) {
   );
 }
 
-function CodePanel({ children }) {
+function PythonSnippet({ code }) {
+  const KEYWORDS = new Set([
+    "import",
+    "from",
+    "as",
+    "True",
+    "False",
+    "None",
+    "for",
+    "in",
+    "if",
+    "else",
+    "print",
+  ]);
   return (
-    <Box component="pre" className="code-panel mono">
-      {children}
+    <>
+      {code.split("\n").map((line, lineIdx) => (
+        <React.Fragment key={`line-${lineIdx}`}>
+          {line.split(/(\s+|"[^"]*"|'[^']*'|#.*$|\b[A-Za-z_][A-Za-z0-9_]*\b|\d+)/g).map((token, tokenIdx) => {
+            if (!token) {
+              return null;
+            }
+            let className = "";
+            if (token.startsWith("#")) className = "py-comment";
+            else if (/^"[^"]*"|'[^']*'$/.test(token)) className = "py-string";
+            else if (/^\d+$/.test(token)) className = "py-number";
+            else if (KEYWORDS.has(token)) className = "py-keyword";
+            return (
+              <span className={className} key={`line-${lineIdx}-token-${tokenIdx}`}>
+                {token}
+              </span>
+            );
+          })}
+          {lineIdx < code.split("\n").length - 1 ? "\n" : null}
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
+
+function CodePanel({ children }) {
+  const [copied, setCopied] = useState(false);
+  const code = typeof children === "string" ? children : String(children ?? "");
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  }, [code]);
+
+  return (
+    <Box className="code-panel-wrapper">
+      <Tooltip title={copied ? "Copied" : "Copy code"}>
+        <IconButton size="small" className="code-copy-btn" onClick={handleCopy} aria-label="Copy code snippet">
+          <ContentCopyIcon fontSize="inherit" />
+        </IconButton>
+      </Tooltip>
+      <Box component="pre" className="code-panel mono code-panel--python">
+        <code>
+          <PythonSnippet code={code} />
+        </code>
+      </Box>
     </Box>
   );
 }
