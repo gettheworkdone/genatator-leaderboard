@@ -13,13 +13,41 @@ import {
 import CalculateIcon from "@mui/icons-material/Calculate";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
-const EVALUATE_SNIPPET = `# How to use this metric with Evaluate
+const EVALUATE_SNIPPET = `# How to use this metric with Hugging Face Evaluate
+#
 # This metric supports a Python API through Hugging Face Evaluate.
 #
-# 1) Install dependencies: pip install evaluate
-# 2) Load the metric from Hugging Face repo shmelev/genatator-leaderboard.
-# 3) Pass local file paths as plain strings and compute everything in one call.
+# Install dependencies:
+#   pip install evaluate
 #
+# Load the metric from the Hugging Face repository:
+#   shmelev/genatator-leaderboard
+#
+# The metric expects local GFF/GFF3-style files.
+# Pass file paths as plain strings.
+#
+# Main parameters:
+#   pred_gff: path to the prediction GFF/GFF3 file.
+#   true_gff: path to the ground-truth GFF/GFF3 file.
+#   k_values: list of boundary tolerances, in base pairs.
+#             For example, [0, 50, 100, 250, 500].
+#   use_strand: whether strand must match between prediction and reference.
+#               Use True for strand-aware evaluation.
+#               Use False for models that do not report strand information.
+#   gene_biotypes: optional filter for gene biotypes.
+#   transcript_types: optional filter for transcript types.
+#
+# By default, the leaderboard uses:
+#   use_strand=True
+#   exon branch: mRNA and lnc_RNA transcripts from protein_coding and lncRNA genes
+#   CDS branch: mRNA transcripts from protein_coding genes
+#
+# The result contains:
+#   result["exon"]       -> exon-branch metrics by k
+#   result["cds"]        -> CDS-branch metrics by k
+#   result["stratifier"] -> grouped metrics by strand, chromosome, and transcript type
+#   result["detailed"]   -> transcript-level matching information
+
 import evaluate
 
 metric = evaluate.load("shmelev/genatator-leaderboard")
@@ -27,21 +55,108 @@ metric = evaluate.load("shmelev/genatator-leaderboard")
 pred_gff_path = "/tmp/predictions.gff"
 true_gff_path = "/tmp/reference.gff"
 
-# Compute both branches through Evaluate.
+
+# ---------------------------------------------------------------------
+# 1) Leaderboard-style evaluation
+# ---------------------------------------------------------------------
+# This is the standard setting used for the leaderboard.
+# It evaluates both exon and CDS branches and returns all outputs.
+
 result = metric.compute(
     pred_gff=pred_gff_path,
     true_gff=true_gff_path,
     k_values=list(range(0, 501)),
+    use_strand=True,
 )
 
+# Main exon-branch scores at k = 250
 print(result["exon"][250]["interval-level"]["f1"])
+print(result["exon"][250]["segmentation-level"]["f1"])
+print(result["exon"][250]["interval-level"]["mi"])
+print(result["exon"][250]["segmentation-level"]["mi"])
+
+# Main CDS-branch scores at k = 250
+print(result["cds"][250]["interval-level"]["f1"])
 print(result["cds"][250]["segmentation-level"]["f1"])
+print(result["cds"][250]["interval-level"]["mi"])
+print(result["cds"][250]["segmentation-level"]["mi"])
 
-# Use stratifier output returned by Evaluate.
+# Exact part-level scores
+print(result["exon"][250]["part-level"]["f1"])
+print(result["cds"][250]["part-level"]["f1"])
+
+
+# ---------------------------------------------------------------------
+# 2) Evaluation without strand matching
+# ---------------------------------------------------------------------
+# Use this for models that do not provide strand information,
+# for example SegmentNT-like or NTv3-like outputs.
+
+result_no_strand = metric.compute(
+    pred_gff=pred_gff_path,
+    true_gff=true_gff_path,
+    k_values=[0, 50, 100, 250, 500],
+    use_strand=False,
+)
+
+print(result_no_strand["exon"][250]["interval-level"]["f1"])
+
+
+# ---------------------------------------------------------------------
+# 3) Custom filtering
+# ---------------------------------------------------------------------
+# You can restrict evaluation to selected gene biotypes and transcript types.
+# For example, this focuses on mRNA transcripts from protein-coding genes.
+
+result_mrna_only = metric.compute(
+    pred_gff=pred_gff_path,
+    true_gff=true_gff_path,
+    k_values=[250],
+    use_strand=True,
+    gene_biotypes=["protein_coding"],
+    transcript_types=["mRNA"],
+)
+
+print(result_mrna_only["exon"][250]["segmentation-level"]["f1"])
+print(result_mrna_only["cds"][250]["segmentation-level"]["f1"])
+
+
+# ---------------------------------------------------------------------
+# 4) Stratifier output
+# ---------------------------------------------------------------------
+# Stratifier returns the same metrics, but grouped by biological rules:
+#   strand
+#   chromosome
+#   transcript_type
+
 print(result["stratifier"]["exon"]["transcript_type"]["mRNA"][250])
+print(result["stratifier"]["exon"]["strand"]["+"][250])
+print(result["stratifier"]["cds"]["chromosome"]["NC_060944.1"][250])
 
-# Use detailed transcript output returned by Evaluate.
-print(len(result["detailed"]["exon"]), list(result["detailed"]["exon"].keys())[:3])`;
+
+# ---------------------------------------------------------------------
+# 5) Detailed transcript-level output
+# ---------------------------------------------------------------------
+# Detailed output lets you inspect which predictions matched
+# each ground-truth transcript and at which minimal k.
+
+detailed_exon = result["detailed"]["exon"]
+
+print(len(detailed_exon))
+print(list(detailed_exon.keys())[:3])
+
+first_tx_id = list(detailed_exon.keys())[0]
+print(detailed_exon[first_tx_id])
+
+# Example fields:
+#   chromosome
+#   start
+#   end
+#   strand
+#   gene_id
+#   transcript_type
+#   interval-level["predictions"]
+#   segmentation-level["predictions"]`
 
 const METRIC_DESCRIPTION_HTML = String.raw`
 <section id="metric-description">
