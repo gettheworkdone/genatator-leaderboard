@@ -521,13 +521,12 @@ export default function MetricPage() {
           <Stack spacing={2.0}>
             <SectionTitle
               title="Accepted input"
-              subtitle="The playground accepts GFF or GFF3-style annotation files and evaluates exon and CDS branches over user-selected k values."
+              subtitle="Input parameters and defaults used by the playground evaluator."
             />
             <Typography color="text.secondary">
-              The playground accepts GFF or GFF3-style annotation files and evaluates exon and CDS branches over user-selected{" "}
-              <span className="mono">k</span> values. You should provide two files: a prediction GFF and a ground-truth GFF.
-              The prediction file should contain transcript models produced by the method being assessed. The ground-truth file
-              should contain the reference transcript annotation for the same genomic region.
+              You should provide two files: a prediction GFF and a ground-truth GFF. The prediction file should contain
+              transcript models produced by the method being assessed. The ground-truth file should contain the reference
+              transcript annotation for the same genomic region.
             </Typography>
             <Typography color="text.secondary">
               <span className="mono">pred_gff</span> is the path to the prediction GFF/GFF3 file. The evaluator reads predicted
@@ -559,13 +558,6 @@ export default function MetricPage() {
               <span className="mono">transcript_types=[&quot;mRNA&quot;, &quot;lnc_RNA&quot;]</span> evaluates only those transcript classes.
             </Typography>
             <Typography color="text.secondary">
-              In the leaderboard setup, evaluation uses <span className="mono">use_strand=True</span> by default. The exon
-              branch evaluates <span className="mono">mRNA</span> and <span className="mono">lnc_RNA</span> transcripts from{" "}
-              <span className="mono">protein_coding</span> and <span className="mono">lncRNA</span> genes. The CDS branch
-              evaluates <span className="mono">mRNA</span> transcripts with annotated coding sequence, usually from{" "}
-              <span className="mono">protein_coding</span> genes.
-            </Typography>
-            <Typography color="text.secondary">
               The output contains exon-branch metrics, CDS-branch metrics, stratified metrics, and detailed transcript-level
               matching information. The stratifier reports the same metrics grouped by strand, chromosome, and transcript type.
               The detailed output shows, for each ground-truth transcript, which predictions matched it and the minimum{" "}
@@ -586,7 +578,10 @@ export default function MetricPage() {
 
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 } }}>
         <Stack spacing={2.2}>
-          <SectionTitle title="Playground" subtitle="Upload a prediction GFF and a ground-truth GFF to compute both exon and CDS branches." />
+          <SectionTitle
+            title="Playground"
+            subtitle="Upload your model’s prediction GFF together with the matching ground-truth GFF, and the playground will calculate the metric scores for you."
+          />
 
           {error ? <Alert severity="error">{error}</Alert> : null}
 
