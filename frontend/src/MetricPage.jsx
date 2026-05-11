@@ -519,10 +519,7 @@ export default function MetricPage() {
       >
         <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, height: "100%" }}>
           <Stack spacing={2.0}>
-            <SectionTitle
-              title="Accepted input"
-              subtitle="Input parameters and defaults used by the playground evaluator."
-            />
+            <SectionTitle title="Accepted input" />
             <Typography color="text.secondary">
               You should provide two files: a prediction GFF and a ground-truth GFF. The prediction file should contain
               transcript models produced by the method being assessed. The ground-truth file should contain the reference
