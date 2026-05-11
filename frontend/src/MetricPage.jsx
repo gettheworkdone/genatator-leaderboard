@@ -521,19 +521,55 @@ export default function MetricPage() {
           <Stack spacing={2.0}>
             <SectionTitle
               title="Accepted input"
-              subtitle="The playground accepts GFF or GFF3-style annotation files and evaluates both branches over a user-selected range of k values."
+              subtitle="The playground accepts GFF or GFF3-style annotation files and evaluates exon and CDS branches over user-selected k values."
             />
             <Typography color="text.secondary">
-              You should provide two files: a prediction GFF and a ground-truth GFF. The evaluator reads transcript, exon, and
-              CDS features directly from these annotations and computes the complete set of branch-specific metrics for the chosen
-              k values. The prediction file should contain the transcript models produced by the method being assessed. The
-              ground-truth file should contain the reference transcript annotation for the same genomic region.
+              The playground accepts GFF or GFF3-style annotation files and evaluates exon and CDS branches over user-selected{" "}
+              <span className="mono">k</span> values. You should provide two files: a prediction GFF and a ground-truth GFF.
+              The prediction file should contain transcript models produced by the method being assessed. The ground-truth file
+              should contain the reference transcript annotation for the same genomic region.
             </Typography>
             <Typography color="text.secondary">
-              In the leaderboard, evaluation is performed with <span className="mono">use_strand=True</span> and with transcript
-              filters chosen separately for each branch. The exon branch includes <span className="mono">mRNA</span> and{" "}
-              <span className="mono">lnc_RNA</span> transcripts, whereas the CDS branch includes <span className="mono">mRNA</span>{" "}
-              transcripts that have annotated coding sequence.
+              <span className="mono">pred_gff</span> is the path to the prediction GFF/GFF3 file. The evaluator reads predicted
+              transcript, exon, and CDS features from this file.
+            </Typography>
+            <Typography color="text.secondary">
+              <span className="mono">true_gff</span> is the path to the ground-truth GFF/GFF3 file. The evaluator reads
+              reference transcript, exon, and CDS features from this file.
+            </Typography>
+            <Typography color="text.secondary">
+              <span className="mono">k_values</span> is the list of boundary tolerances, measured in base pairs. Each{" "}
+              <span className="mono">k</span> value defines how far a predicted boundary may deviate from the reference boundary
+              and still be counted as matched. For example, <span className="mono">k_values=[0, 50, 100, 250, 500]</span>{" "}
+              evaluates the metric at five tolerances.
+            </Typography>
+            <Typography color="text.secondary">
+              <span className="mono">use_strand</span> controls whether strand information is used during matching. If{" "}
+              <span className="mono">use_strand=True</span>, a prediction must match the reference on the same chromosome,
+              coordinates, and strand. If <span className="mono">use_strand=False</span>, strand is ignored. This is useful for
+              models that do not report strand information in their predictions.
+            </Typography>
+            <Typography color="text.secondary">
+              <span className="mono">gene_biotypes</span> is an optional filter for reference gene biotypes. For example,{" "}
+              <span className="mono">gene_biotypes=[&quot;protein_coding&quot;, &quot;lncRNA&quot;]</span> restricts the evaluation to those gene categories
+              when the corresponding annotations are present in the ground-truth file.
+            </Typography>
+            <Typography color="text.secondary">
+              <span className="mono">transcript_types</span> is an optional filter for reference transcript types. For example,{" "}
+              <span className="mono">transcript_types=[&quot;mRNA&quot;, &quot;lnc_RNA&quot;]</span> evaluates only those transcript classes.
+            </Typography>
+            <Typography color="text.secondary">
+              In the leaderboard setup, evaluation uses <span className="mono">use_strand=True</span> by default. The exon
+              branch evaluates <span className="mono">mRNA</span> and <span className="mono">lnc_RNA</span> transcripts from{" "}
+              <span className="mono">protein_coding</span> and <span className="mono">lncRNA</span> genes. The CDS branch
+              evaluates <span className="mono">mRNA</span> transcripts with annotated coding sequence, usually from{" "}
+              <span className="mono">protein_coding</span> genes.
+            </Typography>
+            <Typography color="text.secondary">
+              The output contains exon-branch metrics, CDS-branch metrics, stratified metrics, and detailed transcript-level
+              matching information. The stratifier reports the same metrics grouped by strand, chromosome, and transcript type.
+              The detailed output shows, for each ground-truth transcript, which predictions matched it and the minimum{" "}
+              <span className="mono">k</span> value required for the match.
             </Typography>
           </Stack>
         </Paper>
