@@ -24,7 +24,7 @@ export default function App() {
       </AppBar>
 
       <Container maxWidth="xl" sx={{ py: 4 }}>
-        <Stack spacing={3.2}>
+        <Stack spacing={2.1}>
           <Stack direction={{ xs: "column", md: "row" }} spacing={1.2}>
             <Button
               variant={pageMode === "leaderboard" ? "contained" : "outlined"}
@@ -38,7 +38,7 @@ export default function App() {
               size="large"
               onClick={() => setPageMode("metric")}
             >
-              Metric description
+              Metrics description
             </Button>
           </Stack>
 
