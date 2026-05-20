@@ -50,7 +50,6 @@ class GenatatorGeneLevelMetric(evaluate.Metric):
             true_gff=true_df,
             k_values=k_values,
             use_strand=True,
-            gene_biotypes=["protein_coding", "lncRNA"],
             transcript_types=["mRNA", "lnc_RNA"],
         )
         cds = evaluator.evaluate_gff_cds(
@@ -58,7 +57,6 @@ class GenatatorGeneLevelMetric(evaluate.Metric):
             true_gff=true_df,
             k_values=k_values,
             use_strand=True,
-            gene_biotypes=["protein_coding"],
             transcript_types=["mRNA"],
         )
         exon_stratifier = evaluator.build_stratifier(
@@ -66,7 +64,6 @@ class GenatatorGeneLevelMetric(evaluate.Metric):
             pred_gff=pred_df,
             true_gff=true_df,
             use_strand=True,
-            gene_biotypes=["protein_coding", "lncRNA"],
             transcript_types=["mRNA", "lnc_RNA"],
         )
         cds_stratifier = evaluator.build_stratifier(
@@ -74,7 +71,6 @@ class GenatatorGeneLevelMetric(evaluate.Metric):
             pred_gff=pred_df,
             true_gff=true_df,
             use_strand=True,
-            gene_biotypes=["protein_coding"],
             transcript_types=["mRNA"],
         )
         exon_detailed = evaluator.build_detailed_info(
@@ -82,7 +78,6 @@ class GenatatorGeneLevelMetric(evaluate.Metric):
             pred_gff=pred_df,
             true_gff=true_df,
             use_strand=True,
-            gene_biotypes=["protein_coding", "lncRNA"],
             transcript_types=["mRNA", "lnc_RNA"],
         )
         cds_detailed = evaluator.build_detailed_info(
@@ -90,7 +85,6 @@ class GenatatorGeneLevelMetric(evaluate.Metric):
             pred_gff=pred_df,
             true_gff=true_df,
             use_strand=True,
-            gene_biotypes=["protein_coding"],
             transcript_types=["mRNA"],
         )
         return {
