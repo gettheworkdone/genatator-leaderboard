@@ -824,8 +824,8 @@ export default function LeaderboardPanel() {
             ["full-metrics", "Full metrics"],
             ["stratifier", "Stratifier"],
             ["detailed-info", "Detailed information"],
-            ["submission", "Benchmark your own annotation"],
             ["leaderboard-description", "Leaderboard description"],
+            ["submission", "Benchmark your own annotation"],
           ].map(([id, label]) => (
             <Button
               key={id}
@@ -1745,6 +1745,7 @@ export default function LeaderboardPanel() {
                                             <TableCell>Exon segments</TableCell>
                                             <TableCell>CDS segments</TableCell>
                                             <TableCell>Min k</TableCell>
+                                            <TableCell>Complete mRNA annotation</TableCell>
                                           </TableRow>
                                         </TableHead>
                                         <TableBody>
@@ -1775,6 +1776,11 @@ export default function LeaderboardPanel() {
                                                 <SegmentBox segments={match.cds_segments} />
                                               </TableCell>
                                               <TableCell>{formatScore(match.min_k, 0)}</TableCell>
+                                              <TableCell>
+                                                {new Set((transcript.annotated_transcripts || []).map((item) => item.pred_id)).has(match.pred_id)
+                                                  ? "✅ Complete mRNA annotation"
+                                                  : "❌ Not annotated"}
+                                              </TableCell>
                                             </TableRow>
                                           ))}
                                         </TableBody>
