@@ -1778,8 +1778,8 @@ export default function LeaderboardPanel() {
                                               <TableCell>{formatScore(match.min_k, 0)}</TableCell>
                                               <TableCell>
                                                 {new Set((transcript.annotated_transcripts || []).map((item) => item.pred_id)).has(match.pred_id)
-                                                  ? "✅ Complete mRNA annotation"
-                                                  : "❌ Not annotated"}
+                                                  ? "✅"
+                                                  : "❌ No complete mRNA annotation"}
                                               </TableCell>
                                             </TableRow>
                                           ))}
