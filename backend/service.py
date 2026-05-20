@@ -26,9 +26,7 @@ SOURCE_REPOSITORY_URL = "https://github.com/alexeyshmelev/genatator-ab-initio-le
 DEFAULT_K_VALUES = list(range(0, 501))
 DEFAULT_K = 250
 USE_STRAND = True
-EXON_GENE_BIOTYPES = ["protein_coding", "lncRNA"]
 EXON_TRANSCRIPT_TYPES = ["mRNA", "lnc_RNA"]
-CDS_GENE_BIOTYPES = ["protein_coding"]
 CDS_TRANSCRIPT_TYPES = ["mRNA"]
 BRANCHES = ("exon", "cds")
 STRATIFIER_LABELS = {
@@ -74,6 +72,7 @@ class ModelBundle:
     branch_results_by_strand: dict[bool, dict[str, dict[int, dict[str, object]]]]
     stratifier_by_strand: dict[bool, dict[str, dict[str, dict[str, dict[int, dict[str, object]]]]]]
     detailed_by_strand: dict[bool, dict[str, dict[str, dict[str, object]]]]
+    annotated_genes_by_strand: dict[bool, dict[int, dict[str, dict[str, dict[str, object]]]]]
     prediction_index: dict[str, dict[str, object]]
     source_file: str | None = None
 
@@ -218,6 +217,13 @@ class LeaderboardService:
         rows: list[dict[str, object]] = []
         for group_name, per_k in stratifier_tree[rule].items():
             metrics = per_k[int(k)]
+            annotated_count = (
+                bundle.annotated_genes_by_strand.get(bool(use_strand), {})
+                .get(int(k), {})
+                .get(rule, {})
+                .get(group_name, {})
+                .get("count", 0)
+            )
             rows.append(
                 {
                     "group": group_name,
@@ -232,6 +238,7 @@ class LeaderboardService:
                     "part_precision": metrics["part-level"]["precision"],
                     "part_recall": metrics["part-level"]["recall"],
                     "part_f1": metrics["part-level"]["f1"],
+                    "annotated_genes": annotated_count,
                 }
             )
         rows.sort(key=lambda item: (-float(item["segmentation_f1"]), str(item["group"])))
@@ -416,12 +423,10 @@ class LeaderboardService:
             )
             shared_indices = {
                 "exon": self._build_ground_truth_index(
-                    gene_biotypes=EXON_GENE_BIOTYPES,
                     transcript_types=EXON_TRANSCRIPT_TYPES,
                     use_strand=True,
                 ),
                 "cds": self._build_ground_truth_index(
-                    gene_biotypes=CDS_GENE_BIOTYPES,
                     transcript_types=CDS_TRANSCRIPT_TYPES,
                     use_strand=True,
                 ),
@@ -529,13 +534,13 @@ class LeaderboardService:
         branch_results_by_strand = {}
         stratifier_by_strand = {}
         detailed_by_strand = {}
+        annotated_genes_by_strand = {}
         for use_strand in (True, False):
             exon_result = self.evaluator.evaluate_gff_exon(
                 pred_gff=pred_gff,
                 true_gff=self._ground_truth_input,
                 k_values=DEFAULT_K_VALUES,
                 use_strand=use_strand,
-                gene_biotypes=EXON_GENE_BIOTYPES,
                 transcript_types=EXON_TRANSCRIPT_TYPES,
             )
             cds_result = self.evaluator.evaluate_gff_cds(
@@ -543,7 +548,6 @@ class LeaderboardService:
                 true_gff=self._ground_truth_input,
                 k_values=DEFAULT_K_VALUES,
                 use_strand=use_strand,
-                gene_biotypes=CDS_GENE_BIOTYPES,
                 transcript_types=CDS_TRANSCRIPT_TYPES,
             )
             exon_result = self._compact_branch_result(exon_result)
@@ -553,7 +557,6 @@ class LeaderboardService:
                 pred_gff=pred_gff,
                 true_gff=self._ground_truth_input,
                 use_strand=use_strand,
-                gene_biotypes=EXON_GENE_BIOTYPES,
                 transcript_types=EXON_TRANSCRIPT_TYPES,
             )
             cds_stratifier = self.evaluator.build_stratifier(
@@ -561,7 +564,6 @@ class LeaderboardService:
                 pred_gff=pred_gff,
                 true_gff=self._ground_truth_input,
                 use_strand=use_strand,
-                gene_biotypes=CDS_GENE_BIOTYPES,
                 transcript_types=CDS_TRANSCRIPT_TYPES,
             )
             exon_detailed = self.evaluator.build_detailed_info(
@@ -569,7 +571,6 @@ class LeaderboardService:
                 pred_gff=pred_gff,
                 true_gff=self._ground_truth_input,
                 use_strand=use_strand,
-                gene_biotypes=EXON_GENE_BIOTYPES,
                 transcript_types=EXON_TRANSCRIPT_TYPES,
             )
             cds_detailed = self.evaluator.build_detailed_info(
@@ -577,12 +578,33 @@ class LeaderboardService:
                 pred_gff=pred_gff,
                 true_gff=self._ground_truth_input,
                 use_strand=use_strand,
-                gene_biotypes=CDS_GENE_BIOTYPES,
                 transcript_types=CDS_TRANSCRIPT_TYPES,
             )
+            exon_detailed = self.evaluator.build_annotated_transcripts_detailed(
+                exon_detailed=exon_detailed,
+                cds_detailed=cds_detailed,
+                transcript_types=tuple(EXON_TRANSCRIPT_TYPES),
+                mrna_type="mRNA",
+            )
+            annotated_genes = self.evaluator.build_annotated_genes(
+                exon_result=exon_result,
+                cds_result=cds_result,
+                transcript_types=tuple(EXON_TRANSCRIPT_TYPES),
+                mrna_type="mRNA",
+                include_gene_ids=True,
+            )
+            for k in DEFAULT_K_VALUES:
+                genes_union: set[str] = set()
+                for group in annotated_genes.get("chromosome", {}).values():
+                    genes_union.update(group.get(int(k), {}).get("gene_ids", []))
+                annotated_genes.setdefault("all", {}).setdefault("all", {})[int(k)] = {
+                    "count": len(genes_union),
+                    "gene_ids": sorted(genes_union),
+                }
             branch_results_by_strand[use_strand] = {"exon": exon_result, "cds": cds_result}
             stratifier_by_strand[use_strand] = {"exon": exon_stratifier, "cds": cds_stratifier}
             detailed_by_strand[use_strand] = {"exon": exon_detailed, "cds": cds_detailed}
+            annotated_genes_by_strand[use_strand] = annotated_genes
 
         prediction_index = self._build_prediction_index(pred_gff)
         return ModelBundle(
@@ -592,6 +614,7 @@ class LeaderboardService:
             branch_results_by_strand=branch_results_by_strand,
             stratifier_by_strand=stratifier_by_strand,
             detailed_by_strand=detailed_by_strand,
+            annotated_genes_by_strand=annotated_genes_by_strand,
             prediction_index=prediction_index,
             source_file=source_file,
         )
@@ -612,16 +635,13 @@ class LeaderboardService:
 
     def _build_ground_truth_index(
         self,
-        gene_biotypes: Iterable[str],
         transcript_types: Iterable[str],
         use_strand: bool,
     ) -> dict[str, object]:
         gt_df = self.evaluator._read_gff(self._ground_truth_input)
-        normalized_gene_biotypes = self.evaluator._normalize_string_filter(gene_biotypes)
-        normalized_transcript_types = self.evaluator._normalize_string_filter(transcript_types)
+        normalized_transcript_types = self.evaluator._normalize_transcript_type_filter(transcript_types)
         true_rows = self.evaluator._extract_true_transcript_rows(
             gt_df,
-            gene_biotypes=normalized_gene_biotypes,
             transcript_types=normalized_transcript_types,
         )
         true_tx = self.evaluator._true_rows_to_transcripts(true_rows, use_strand=use_strand)
@@ -690,7 +710,6 @@ class LeaderboardService:
             pred_gff=pred_gff,
             true_gff=self._ground_truth_input,
             k_values=[0],
-            gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
             use_strand=USE_STRAND,
         )
@@ -726,6 +745,7 @@ class LeaderboardService:
             "temporary": bundle.temporary,
             "source_file": bundle.source_file,
             "metrics_at_default_k": metrics_at_default_k,
+            "annotated_genes": bundle.annotated_genes_by_strand[bool(use_strand)],
             "curves": curves,
         }
 
@@ -750,6 +770,7 @@ class LeaderboardService:
             "part_precision": part_payload["precision"],
             "part_recall": part_payload["recall"],
             "part_f1": part_payload["f1"],
+            "annotated_genes": bundle.annotated_genes_by_strand[bool(use_strand)].get("all", {}).get("all", {}).get(int(k), {}).get("count", 0),
             "interval_counts": interval_payload["precision_counts"] | interval_payload["recall_counts"],
             "segmentation_counts": segmentation_payload["precision_counts"] | segmentation_payload["recall_counts"],
             "part_counts": part_payload["precision_counts"] | part_payload["recall_counts"],
