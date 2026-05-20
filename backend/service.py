@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import math
+import re
 import shutil
 import subprocess
 import threading
@@ -991,25 +992,19 @@ class LeaderboardService:
             for mapping_name in ("model_name_mapping.json", "name_mapping.json"):
                 mapping_path = self.pred_repo_dir / mapping_name
                 if mapping_path.exists():
-                    try:
-                        loaded = json.loads(mapping_path.read_text(encoding="utf-8"))
-                        if isinstance(loaded, dict):
-                            mapping = loaded
-                            break
-                    except Exception:
-                        continue
+                    loaded = self._load_json_like_dict(mapping_path)
+                    if loaded is not None:
+                        mapping = loaded
+                        break
 
             references: dict[str, str] = {}
             references_path = self.pred_repo_dir / "references.json"
             if references_path.exists():
-                try:
-                    loaded_references = json.loads(references_path.read_text(encoding="utf-8"))
-                    if isinstance(loaded_references, dict):
-                        for key, value in loaded_references.items():
-                            if isinstance(value, str) and value.strip():
-                                references[Path(str(key)).stem] = value.strip()
-                except Exception:
-                    pass
+                loaded_references = self._load_json_like_dict(references_path)
+                if loaded_references is not None:
+                    for key, value in loaded_references.items():
+                        if isinstance(value, str) and value.strip():
+                            references[Path(str(key)).stem] = value.strip()
 
             valid_suffixes = {".gff", ".gff3", ".txt", ".gtf"}
             files = sorted(
@@ -1049,24 +1044,18 @@ class LeaderboardService:
                 for mapping_name in ("model_name_mapping.json", "name_mapping.json"):
                     mapping_path = repo_dir / mapping_name
                     if mapping_path.exists():
-                        try:
-                            loaded = json.loads(mapping_path.read_text(encoding="utf-8"))
-                            if isinstance(loaded, dict):
-                                mapping = loaded
-                                break
-                        except Exception:
-                            continue
+                        loaded = self._load_json_like_dict(mapping_path)
+                        if loaded is not None:
+                            mapping = loaded
+                            break
                 references: dict[str, str] = {}
                 references_path = repo_dir / "references.json"
                 if references_path.exists():
-                    try:
-                        loaded_references = json.loads(references_path.read_text(encoding="utf-8"))
-                        if isinstance(loaded_references, dict):
-                            for key, value in loaded_references.items():
-                                if isinstance(value, str) and value.strip():
-                                    references[Path(str(key)).stem] = value.strip()
-                    except Exception:
-                        pass
+                    loaded_references = self._load_json_like_dict(references_path)
+                    if loaded_references is not None:
+                        for key, value in loaded_references.items():
+                            if isinstance(value, str) and value.strip():
+                                references[Path(str(key)).stem] = value.strip()
                 normalized_map = {Path(str(key)).stem: value for key, value in mapping.items()}
                 self._set_state(message=f"ZIP fallback loaded {len(files)} prediction file(s).")
                 return files, normalized_map, references
@@ -1089,6 +1078,20 @@ class LeaderboardService:
             if isinstance(value, dict) and isinstance(value.get("display_name"), str):
                 return value["display_name"]
         return path.name
+
+    def _load_json_like_dict(self, path: Path) -> dict[str, Any] | None:
+        try:
+            text = path.read_text(encoding="utf-8")
+            try:
+                loaded = json.loads(text)
+                return loaded if isinstance(loaded, dict) else None
+            except json.JSONDecodeError:
+                sanitized = re.sub(r"//.*?$|/\*.*?\*/", "", text, flags=re.MULTILINE | re.DOTALL)
+                sanitized = re.sub(r",\s*([}\]])", r"\1", sanitized)
+                loaded = json.loads(sanitized)
+                return loaded if isinstance(loaded, dict) else None
+        except Exception:
+            return None
 
     def _reference_url_for_bundle(self, bundle: ModelBundle) -> str | None:
         if bundle.temporary:

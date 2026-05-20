@@ -837,7 +837,7 @@ export default function LeaderboardPanel() {
           ) : null}
 
           {status?.error ? <Alert severity="error">{status.error}</Alert> : null}
-          {status?.debug_log?.length ? (
+          {status?.debug_log?.length && (!status?.ready || Boolean(status?.error)) ? (
             <Alert severity="info">
               <Typography component="div" sx={{ whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: "0.76rem", maxHeight: 220, overflow: "auto" }}>
                 {status.debug_log.slice(-25).join("\n")}
