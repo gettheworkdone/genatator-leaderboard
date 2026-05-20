@@ -170,7 +170,7 @@ const LEADERBOARD_DESCRIPTION_HTML = String.raw`
   </p>
 
   <p>
-    The final panel, <strong>Temporary submission</strong>, lets you upload your own prediction GFF and assign it a
+    The final panel, <strong>Benchmark your own annotation</strong>, lets you upload your own prediction GFF and assign it a
     model name for the current session. The uploaded prediction is evaluated on demand and appears together with
     the other models in the tables and curves. It is not stored permanently and disappears after page refresh. To add
     a model to the leaderboard permanently, you have to open a pull request with your predictions and model name
@@ -341,6 +341,15 @@ export default function LeaderboardPanel() {
     }
     return modelsCombined.filter((item) => selectedModels.includes(item.model_id));
   }, [modelsCombined, selectedModels]);
+  const sortedChartModels = useMemo(() => {
+    const withScore = chartModels.map((model) => {
+      const values = model?.curves?.[graphBranch]?.[graphMetric] || [];
+      const total = values.reduce((acc, value) => acc + Number(value || 0), 0);
+      return { model, total };
+    });
+    withScore.sort((a, b) => b.total - a.total);
+    return withScore.map((item) => item.model);
+  }, [chartModels, graphBranch, graphMetric]);
 
   const chartData = useMemo(() => {
     if (!overview?.k_values?.length) {
@@ -348,12 +357,12 @@ export default function LeaderboardPanel() {
     }
     return overview.k_values.map((kValue, index) => {
       const row = { k: kValue };
-      chartModels.forEach((model) => {
+      sortedChartModels.forEach((model) => {
         row[model.model_id] = model?.curves?.[graphBranch]?.[graphMetric]?.[index] ?? null;
       });
       return row;
     });
-  }, [overview, chartModels, graphBranch, graphMetric]);
+  }, [overview, sortedChartModels, graphBranch, graphMetric]);
 
   const mainRows = useMemo(() => {
     if (!modelsCombined.length) {
@@ -373,6 +382,7 @@ export default function LeaderboardPanel() {
       cds_interval_mi: modelValueAtK(overview, model, "cds", "interval_mi", selectedK),
       cds_segmentation_f1: modelValueAtK(overview, model, "cds", "segmentation_f1", selectedK),
       cds_segmentation_mi: modelValueAtK(overview, model, "cds", "segmentation_mi", selectedK),
+      annotated_genes: model?.annotated_genes?.all?.all?.[selectedK]?.count ?? 0,
     }));
 
     rows.sort((a, b) => {
@@ -398,6 +408,7 @@ export default function LeaderboardPanel() {
         "cds_interval_mi",
         "cds_segmentation_f1",
         "cds_segmentation_mi",
+        "annotated_genes",
       ]),
     [mainRows],
   );
@@ -539,6 +550,12 @@ export default function LeaderboardPanel() {
             const localRow = (preview.full_metrics_by_strand?.[useStrand ? "true" : "false"]?.[fullBranch]?.[selectedK]) || preview.full_metrics?.[fullBranch]?.[selectedK];
             if (localRow) rows.push(localRow);
           }
+        });
+        rows.sort((a, b) => {
+          const sum = (row) =>
+            ["interval_precision","interval_recall","interval_f1","interval_mi","segmentation_precision","segmentation_recall","segmentation_f1","segmentation_mi","part_precision","part_recall","part_f1","annotated_genes"]
+              .reduce((acc, key) => acc + Number(row?.[key] || 0), 0);
+          return sum(b) - sum(a);
         });
         setFullMetrics({ ...payload, rows });
       })
@@ -820,6 +837,13 @@ export default function LeaderboardPanel() {
           ) : null}
 
           {status?.error ? <Alert severity="error">{status.error}</Alert> : null}
+          {status?.debug_log?.length && (!status?.ready || Boolean(status?.error)) ? (
+            <Alert severity="info">
+              <Typography component="div" sx={{ whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: "0.76rem", maxHeight: 220, overflow: "auto" }}>
+                {status.debug_log.slice(-25).join("\n")}
+              </Typography>
+            </Alert>
+          ) : null}
 
           {status?.missing_ground_truth ? (
             <Alert
@@ -839,7 +863,7 @@ export default function LeaderboardPanel() {
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 7, mt: 3.2 }}>
         <Stack spacing={1.8}>
           <SectionTitle
-            title="Temporary submission"
+            title="Benchmark your own annotation"
             subtitle="Upload your own prediction GFF, give it a model name, and compare it with the leaderboard models for the current browser session."
             constrainSubtitle={false}
           />
@@ -903,10 +927,9 @@ export default function LeaderboardPanel() {
         <Stack spacing={1.4}>
           <SectionTitle title="TLDR" />
           <Typography color="text.secondary" sx={{ fontSize: "0.92rem", lineHeight: 1.55, fontWeight: 700 }}>
-            Tiberius is the strongest model for recovering CDS regions in mRNA genes. GENATATOR is strongest for
-            recovering mRNA exons, detecting lncRNA genes, and finding multiple transcript isoforms for the same gene.
-            For the most robust annotation, run both Tiberius and GENATATOR, then use the intersection of the
-            transcripts they recover.
+            This leaderboard evaluates gene annotation models against human reference annotation. For protein-coding genes performance, sort by F1 with seg. on CDS. For all genes, including lncRNA, sort by F1 with seg. on exons. Current leaders: GENATATOR for all genes and Tiberius for protein-coding genes.
+            <br />
+            To submit your model jump <a href={overview?.source_repository_url || "https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git"} target="_blank" rel="noreferrer">here</a>
           </Typography>
         </Stack>
       </Paper>
@@ -1008,6 +1031,7 @@ export default function LeaderboardPanel() {
                     <TableCell>MI w/o seg.</TableCell>
                     <TableCell className="rank-column-highlight">F1 with seg.</TableCell>
                     <TableCell>MI with seg.</TableCell>
+                    <TableCell>Annotated genes</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1114,6 +1138,7 @@ export default function LeaderboardPanel() {
                       >
                         {formatScore(row.cds_segmentation_mi, 0)}
                       </TableCell>
+                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1188,12 +1213,12 @@ export default function LeaderboardPanel() {
                     return Number.isFinite(numeric) ? numeric.toFixed(4) : "—";
                   }}
                 />
-                <Legend />
+                <Legend formatter={(value)=>value} />
                 {CHART_AXIS_TICKS.map((tick) => (
                   <ReferenceLine key={`tick-${tick}`} x={tick} stroke="#94a3b8" strokeDasharray="4 4" />
                 ))}
                 <ReferenceLine x={selectedK} stroke="#334155" strokeDasharray="4 4" />
-                {chartModels.map((model, index) => (
+                {sortedChartModels.map((model, index) => (
                   <Line
                     key={model.model_id}
                     dataKey={model.model_id}
@@ -1245,6 +1270,7 @@ export default function LeaderboardPanel() {
                     <TableCell colSpan={3} align="center">
                       Exact part level
                     </TableCell>
+                    <TableCell rowSpan={2}>Annotated genes</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell>Precision</TableCell>
@@ -1391,6 +1417,7 @@ export default function LeaderboardPanel() {
                       >
                         {formatScore(row.part_f1)}
                       </TableCell>
+                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1469,6 +1496,7 @@ export default function LeaderboardPanel() {
                     <TableCell>Segmentation F1</TableCell>
                     <TableCell>Segmentation MI</TableCell>
                     <TableCell>Exact part F1</TableCell>
+                    <TableCell>Annotated genes</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1480,6 +1508,7 @@ export default function LeaderboardPanel() {
                       <TableCell>{formatScore(row.segmentation_f1)}</TableCell>
                       <TableCell>{formatScore(row.segmentation_mi, 0)}</TableCell>
                       <TableCell>{formatScore(row.part_f1)}</TableCell>
+                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
