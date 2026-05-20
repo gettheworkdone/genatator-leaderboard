@@ -341,6 +341,15 @@ export default function LeaderboardPanel() {
     }
     return modelsCombined.filter((item) => selectedModels.includes(item.model_id));
   }, [modelsCombined, selectedModels]);
+  const sortedChartModels = useMemo(() => {
+    const withScore = chartModels.map((model) => {
+      const values = model?.curves?.[graphBranch]?.[graphMetric] || [];
+      const total = values.reduce((acc, value) => acc + Number(value || 0), 0);
+      return { model, total };
+    });
+    withScore.sort((a, b) => b.total - a.total);
+    return withScore.map((item) => item.model);
+  }, [chartModels, graphBranch, graphMetric]);
 
   const chartData = useMemo(() => {
     if (!overview?.k_values?.length) {
@@ -348,12 +357,12 @@ export default function LeaderboardPanel() {
     }
     return overview.k_values.map((kValue, index) => {
       const row = { k: kValue };
-      chartModels.forEach((model) => {
+      sortedChartModels.forEach((model) => {
         row[model.model_id] = model?.curves?.[graphBranch]?.[graphMetric]?.[index] ?? null;
       });
       return row;
     });
-  }, [overview, chartModels, graphBranch, graphMetric]);
+  }, [overview, sortedChartModels, graphBranch, graphMetric]);
 
   const mainRows = useMemo(() => {
     if (!modelsCombined.length) {
@@ -1209,7 +1218,7 @@ export default function LeaderboardPanel() {
                   <ReferenceLine key={`tick-${tick}`} x={tick} stroke="#94a3b8" strokeDasharray="4 4" />
                 ))}
                 <ReferenceLine x={selectedK} stroke="#334155" strokeDasharray="4 4" />
-                {chartModels.map((model, index) => (
+                {sortedChartModels.map((model, index) => (
                   <Line
                     key={model.model_id}
                     dataKey={model.model_id}
@@ -1408,6 +1417,7 @@ export default function LeaderboardPanel() {
                       >
                         {formatScore(row.part_f1)}
                       </TableCell>
+                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

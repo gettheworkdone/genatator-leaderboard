@@ -496,6 +496,7 @@ class LeaderboardService:
                     else ("Leaderboard is ready." if not failed_models else f"Leaderboard is ready. Skipped {len(failed_models)} model(s).")
                 ),
                 error=failed_details or None,
+                debug_log=[],
                 current_model=None,
                 finished_at=time.time(),
             )
@@ -990,19 +991,25 @@ class LeaderboardService:
             for mapping_name in ("model_name_mapping.json", "name_mapping.json"):
                 mapping_path = self.pred_repo_dir / mapping_name
                 if mapping_path.exists():
-                    loaded = json.loads(mapping_path.read_text(encoding="utf-8"))
-                    if isinstance(loaded, dict):
-                        mapping = loaded
-                        break
+                    try:
+                        loaded = json.loads(mapping_path.read_text(encoding="utf-8"))
+                        if isinstance(loaded, dict):
+                            mapping = loaded
+                            break
+                    except Exception:
+                        continue
 
             references: dict[str, str] = {}
             references_path = self.pred_repo_dir / "references.json"
             if references_path.exists():
-                loaded_references = json.loads(references_path.read_text(encoding="utf-8"))
-                if isinstance(loaded_references, dict):
-                    for key, value in loaded_references.items():
-                        if isinstance(value, str) and value.strip():
-                            references[Path(str(key)).stem] = value.strip()
+                try:
+                    loaded_references = json.loads(references_path.read_text(encoding="utf-8"))
+                    if isinstance(loaded_references, dict):
+                        for key, value in loaded_references.items():
+                            if isinstance(value, str) and value.strip():
+                                references[Path(str(key)).stem] = value.strip()
+                except Exception:
+                    pass
 
             valid_suffixes = {".gff", ".gff3", ".txt", ".gtf"}
             files = sorted(
@@ -1038,8 +1045,31 @@ class LeaderboardService:
                     [path for path in predictions_src_dir.rglob("*") if path.is_file() and path.suffix.lower() in valid_suffixes],
                     key=lambda path: str(path).lower(),
                 )
+                mapping: dict[str, Any] = {}
+                for mapping_name in ("model_name_mapping.json", "name_mapping.json"):
+                    mapping_path = repo_dir / mapping_name
+                    if mapping_path.exists():
+                        try:
+                            loaded = json.loads(mapping_path.read_text(encoding="utf-8"))
+                            if isinstance(loaded, dict):
+                                mapping = loaded
+                                break
+                        except Exception:
+                            continue
+                references: dict[str, str] = {}
+                references_path = repo_dir / "references.json"
+                if references_path.exists():
+                    try:
+                        loaded_references = json.loads(references_path.read_text(encoding="utf-8"))
+                        if isinstance(loaded_references, dict):
+                            for key, value in loaded_references.items():
+                                if isinstance(value, str) and value.strip():
+                                    references[Path(str(key)).stem] = value.strip()
+                    except Exception:
+                        pass
+                normalized_map = {Path(str(key)).stem: value for key, value in mapping.items()}
                 self._set_state(message=f"ZIP fallback loaded {len(files)} prediction file(s).")
-                return files, {}, {}
+                return files, normalized_map, references
             except Exception as fallback_exc:
                 self._set_state(error=f"Prediction sync failed: {type(fallback_exc).__name__}: {fallback_exc}")
                 return [], {}, {}
@@ -1058,7 +1088,7 @@ class LeaderboardService:
                 return value
             if isinstance(value, dict) and isinstance(value.get("display_name"), str):
                 return value["display_name"]
-        return path.stem.replace("_", " ")
+        return path.name
 
     def _reference_url_for_bundle(self, bundle: ModelBundle) -> str | None:
         if bundle.temporary:
