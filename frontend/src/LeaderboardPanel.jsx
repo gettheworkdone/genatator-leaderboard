@@ -793,9 +793,19 @@ export default function LeaderboardPanel() {
     <Stack spacing={0}>
       <Paper
         className="glass-card"
-        sx={{ p: { xs: 1.2, md: 1.4 }, order: -1, mt: 0, position: "sticky", top: 64, zIndex: 20 }}
+        sx={{
+          p: { xs: 1.2, md: 1.4 },
+          order: -1,
+          mt: 0,
+          position: "sticky",
+          top: 64,
+          zIndex: 20,
+          backgroundColor: "transparent",
+          boxShadow: "none",
+          backdropFilter: "none",
+        }}
       >
-        <Stack direction="row" spacing={1} sx={{ overflowX: "auto", whiteSpace: "nowrap" }}>
+        <Stack direction="row" spacing={1} sx={{ overflowX: "auto", whiteSpace: "nowrap", justifyContent: "center" }}>
           {[
             ["tldr", "TLDR"],
             ["main-metrics", "Main metrics"],
@@ -1035,7 +1045,7 @@ export default function LeaderboardPanel() {
                       Rank
                     </TableCell>
                     <TableCell rowSpan={2} sx={{ width: 280, minWidth: 280 }}>Model</TableCell>
-                    <TableCell rowSpan={2}>Annotated genes</TableCell>
+                    <TableCell rowSpan={2} sx={{ width: 165, minWidth: 165 }}>Annotated genes</TableCell>
                     <TableCell colSpan={4} align="center">
                       Exon
                     </TableCell>
@@ -1077,7 +1087,7 @@ export default function LeaderboardPanel() {
                           )}
                         </Stack>
                       </TableCell>
-                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
+                      <TableCell sx={{ width: 165, minWidth: 165 }}>{formatScore(row.annotated_genes, 0)}</TableCell>
                       <TableCell
                         sx={
                           mainColumnHighlights.exon_interval_f1 !== undefined &&
@@ -1283,7 +1293,7 @@ export default function LeaderboardPanel() {
                     <TableCell rowSpan={2} sx={{ width: 280, minWidth: 280 }}>
                       Model
                     </TableCell>
-                    <TableCell rowSpan={2}>Annotated genes</TableCell>
+                    <TableCell rowSpan={2} sx={{ width: 165, minWidth: 165 }}>Annotated genes</TableCell>
                     <TableCell colSpan={4} align="center">
                       Interval level
                     </TableCell>
@@ -1330,7 +1340,7 @@ export default function LeaderboardPanel() {
                           )}
                         </Stack>
                       </TableCell>
-                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
+                      <TableCell sx={{ width: 165, minWidth: 165 }}>{formatScore(row.annotated_genes, 0)}</TableCell>
                       <TableCell
                         sx={
                           fullColumnHighlights.interval_precision !== undefined &&
@@ -1515,7 +1525,7 @@ export default function LeaderboardPanel() {
                 <TableHead>
                   <TableRow>
                     <TableCell>Group</TableCell>
-                    <TableCell>Annotated genes</TableCell>
+                    <TableCell sx={{ width: 165, minWidth: 165 }}>Annotated genes</TableCell>
                     <TableCell>Interval F1</TableCell>
                     <TableCell>Interval MI</TableCell>
                     <TableCell>Segmentation F1</TableCell>
@@ -1528,7 +1538,7 @@ export default function LeaderboardPanel() {
                   {stratifier.rows.map((row) => (
                     <TableRow key={row.group}>
                       <TableCell>{row.group}</TableCell>
-                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
+                      <TableCell sx={{ width: 165, minWidth: 165 }}>{formatScore(row.annotated_genes, 0)}</TableCell>
                       <TableCell>{formatScore(row.interval_f1)}</TableCell>
                       <TableCell>{formatScore(row.interval_mi, 0)}</TableCell>
                       <TableCell>{formatScore(row.segmentation_f1)}</TableCell>
@@ -1650,7 +1660,7 @@ export default function LeaderboardPanel() {
                                   <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                                     <Typography fontWeight={760}>{transcript.transcript_id}</Typography>
                                     <Chip size="small" label={transcript.transcript_type} />
-                                    <Chip size="small" color={transcript.is_annotated ? "success" : "default"} label={transcript.is_annotated ? "✅ Annotated" : "❌ Not annotated"} />
+                                    <Chip size="small" color={transcript.is_annotated ? "success" : "default"} label={transcript.is_annotated ? "✅ Complete mRNA annotation" : "❌ Not annotated"} />
                                     <Chip size="small" variant="outlined" label={`${transcript.length} nt`} />
                                     <Chip
                                       size="small"
