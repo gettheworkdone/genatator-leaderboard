@@ -1492,7 +1492,6 @@ export default function LeaderboardPanel() {
                       <TableCell>{formatScore(row.segmentation_mi, 0)}</TableCell>
                       <TableCell>{formatScore(row.part_f1)}</TableCell>
                       <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
-                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

@@ -26,9 +26,7 @@ SOURCE_REPOSITORY_URL = "https://github.com/alexeyshmelev/genatator-ab-initio-le
 DEFAULT_K_VALUES = list(range(0, 501))
 DEFAULT_K = 250
 USE_STRAND = True
-EXON_GENE_BIOTYPES = ["protein_coding", "lncRNA"]
 EXON_TRANSCRIPT_TYPES = ["mRNA", "lnc_RNA"]
-CDS_GENE_BIOTYPES = ["protein_coding"]
 CDS_TRANSCRIPT_TYPES = ["mRNA"]
 BRANCHES = ("exon", "cds")
 STRATIFIER_LABELS = {
@@ -425,12 +423,10 @@ class LeaderboardService:
             )
             shared_indices = {
                 "exon": self._build_ground_truth_index(
-                    gene_biotypes=EXON_GENE_BIOTYPES,
                     transcript_types=EXON_TRANSCRIPT_TYPES,
                     use_strand=True,
                 ),
                 "cds": self._build_ground_truth_index(
-                    gene_biotypes=CDS_GENE_BIOTYPES,
                     transcript_types=CDS_TRANSCRIPT_TYPES,
                     use_strand=True,
                 ),
@@ -545,7 +541,6 @@ class LeaderboardService:
                 true_gff=self._ground_truth_input,
                 k_values=DEFAULT_K_VALUES,
                 use_strand=use_strand,
-                gene_biotypes=EXON_GENE_BIOTYPES,
                 transcript_types=EXON_TRANSCRIPT_TYPES,
             )
             cds_result = self.evaluator.evaluate_gff_cds(
@@ -553,7 +548,6 @@ class LeaderboardService:
                 true_gff=self._ground_truth_input,
                 k_values=DEFAULT_K_VALUES,
                 use_strand=use_strand,
-                gene_biotypes=CDS_GENE_BIOTYPES,
                 transcript_types=CDS_TRANSCRIPT_TYPES,
             )
             exon_result = self._compact_branch_result(exon_result)
@@ -563,7 +557,6 @@ class LeaderboardService:
                 pred_gff=pred_gff,
                 true_gff=self._ground_truth_input,
                 use_strand=use_strand,
-                gene_biotypes=EXON_GENE_BIOTYPES,
                 transcript_types=EXON_TRANSCRIPT_TYPES,
             )
             cds_stratifier = self.evaluator.build_stratifier(
@@ -571,7 +564,6 @@ class LeaderboardService:
                 pred_gff=pred_gff,
                 true_gff=self._ground_truth_input,
                 use_strand=use_strand,
-                gene_biotypes=CDS_GENE_BIOTYPES,
                 transcript_types=CDS_TRANSCRIPT_TYPES,
             )
             exon_detailed = self.evaluator.build_detailed_info(
@@ -579,7 +571,6 @@ class LeaderboardService:
                 pred_gff=pred_gff,
                 true_gff=self._ground_truth_input,
                 use_strand=use_strand,
-                gene_biotypes=EXON_GENE_BIOTYPES,
                 transcript_types=EXON_TRANSCRIPT_TYPES,
             )
             cds_detailed = self.evaluator.build_detailed_info(
@@ -587,7 +578,6 @@ class LeaderboardService:
                 pred_gff=pred_gff,
                 true_gff=self._ground_truth_input,
                 use_strand=use_strand,
-                gene_biotypes=CDS_GENE_BIOTYPES,
                 transcript_types=CDS_TRANSCRIPT_TYPES,
             )
             exon_detailed = self.evaluator.build_annotated_transcripts_detailed(
@@ -645,16 +635,13 @@ class LeaderboardService:
 
     def _build_ground_truth_index(
         self,
-        gene_biotypes: Iterable[str],
         transcript_types: Iterable[str],
         use_strand: bool,
     ) -> dict[str, object]:
         gt_df = self.evaluator._read_gff(self._ground_truth_input)
-        normalized_gene_biotypes = self.evaluator._normalize_string_filter(gene_biotypes)
-        normalized_transcript_types = self.evaluator._normalize_string_filter(transcript_types)
+        normalized_transcript_types = self.evaluator._normalize_transcript_type_filter(transcript_types)
         true_rows = self.evaluator._extract_true_transcript_rows(
             gt_df,
-            gene_biotypes=normalized_gene_biotypes,
             transcript_types=normalized_transcript_types,
         )
         true_tx = self.evaluator._true_rows_to_transcripts(true_rows, use_strand=use_strand)
@@ -723,7 +710,6 @@ class LeaderboardService:
             pred_gff=pred_gff,
             true_gff=self._ground_truth_input,
             k_values=[0],
-            gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
             use_strand=USE_STRAND,
         )
