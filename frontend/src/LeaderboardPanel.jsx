@@ -961,7 +961,7 @@ export default function LeaderboardPanel() {
             <br />
             To submit your model jump <a href={overview?.source_repository_url || "https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git"} target="_blank" rel="noreferrer">here</a>
           </Typography>
-        </Stack>
+                  </Stack>
       </Paper>
 
       <Paper className="glass-card" id="main-metrics" sx={{ p: { xs: 2.2, md: 3 }, order: 1, mt: 3.2 }}>
@@ -1062,6 +1062,7 @@ export default function LeaderboardPanel() {
                     <TableCell>MI w/o seg.</TableCell>
                     <TableCell className="rank-column-highlight">F1 with seg.</TableCell>
                     <TableCell>MI with seg.</TableCell>
+                    <TableCell>Annotated genes</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1169,6 +1170,7 @@ export default function LeaderboardPanel() {
                       >
                         {formatScore(row.cds_segmentation_mi, 0)}
                       </TableCell>
+                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1301,6 +1303,7 @@ export default function LeaderboardPanel() {
                     <TableCell colSpan={3} align="center">
                       Exact part level
                     </TableCell>
+                    <TableCell rowSpan={2}>Annotated genes</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell>Precision</TableCell>
@@ -1448,6 +1451,7 @@ export default function LeaderboardPanel() {
                       >
                         {formatScore(row.part_f1)}
                       </TableCell>
+                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1527,6 +1531,7 @@ export default function LeaderboardPanel() {
                     <TableCell>Segmentation F1</TableCell>
                     <TableCell>Segmentation MI</TableCell>
                     <TableCell>Exact part F1</TableCell>
+                    <TableCell>Annotated genes</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1539,6 +1544,7 @@ export default function LeaderboardPanel() {
                       <TableCell>{formatScore(row.segmentation_f1)}</TableCell>
                       <TableCell>{formatScore(row.segmentation_mi, 0)}</TableCell>
                       <TableCell>{formatScore(row.part_f1)}</TableCell>
+                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
