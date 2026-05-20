@@ -93,6 +93,7 @@ class ServiceState:
     launched_at: float = field(default_factory=time.time)
     started_at: float | None = None
     finished_at: float | None = None
+    debug_log: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -110,6 +111,7 @@ class ServiceState:
             "launched_at": self.launched_at,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
+            "debug_log": list(self.debug_log),
         }
 
 
@@ -1057,4 +1059,11 @@ class LeaderboardService:
         with self._lock:
             for key, value in kwargs.items():
                 setattr(self._state, key, value)
+            message = kwargs.get("message")
+            error = kwargs.get("error")
+            if isinstance(message, str) and message.strip():
+                self._state.debug_log.append(f"[{time.strftime('%H:%M:%S')}] {message.strip()}")
+            if isinstance(error, str) and error.strip():
+                self._state.debug_log.append(f"[{time.strftime('%H:%M:%S')}] ERROR: {error.strip()}")
+            self._state.debug_log = self._state.debug_log[-200:]
             self._state.upload_queue_length = self._upload_queue.qsize()

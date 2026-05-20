@@ -828,6 +828,13 @@ export default function LeaderboardPanel() {
           ) : null}
 
           {status?.error ? <Alert severity="error">{status.error}</Alert> : null}
+          {status?.debug_log?.length ? (
+            <Alert severity="info">
+              <Typography component="div" sx={{ whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: "0.76rem", maxHeight: 220, overflow: "auto" }}>
+                {status.debug_log.slice(-25).join("\n")}
+              </Typography>
+            </Alert>
+          ) : null}
 
           {status?.missing_ground_truth ? (
             <Alert
