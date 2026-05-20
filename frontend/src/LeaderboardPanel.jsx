@@ -793,7 +793,7 @@ export default function LeaderboardPanel() {
     <Stack spacing={0}>
       <Paper
         sx={{
-          p: { xs: 1.2, md: 1.4 },
+          p: { xs: 1.6, md: 1.8 },
           order: -1,
           mt: 0,
           position: "sticky",
@@ -805,7 +805,17 @@ export default function LeaderboardPanel() {
           border: "none",
         }}
       >
-        <Stack direction="row" spacing={1} sx={{ overflowX: "auto", whiteSpace: "nowrap", justifyContent: "center" }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{
+            overflowX: "auto",
+            overflowY: "visible",
+            whiteSpace: "nowrap",
+            justifyContent: "center",
+            py: 0.4,
+          }}
+        >
           {[
             ["tldr", "TLDR"],
             ["main-metrics", "Main metrics"],
