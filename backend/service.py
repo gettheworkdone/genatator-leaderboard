@@ -3,11 +3,13 @@ from __future__ import annotations
 import copy
 import json
 import math
+import shutil
 import subprocess
 import threading
 import time
 import traceback
 import uuid
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from queue import Queue
@@ -953,19 +955,32 @@ class LeaderboardService:
         try:
             self.external_dir.mkdir(parents=True, exist_ok=True)
             if self.pred_repo_dir.exists():
-                subprocess.run(
+                pull = subprocess.run(
                     ["git", "-C", str(self.pred_repo_dir), "pull", "--ff-only"],
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    capture_output=True,
+                    text=True,
                 )
+                if pull.returncode != 0:
+                    self._set_state(message=f"Remote git pull failed ({pull.returncode}). Re-cloning prediction repository.")
+                    shutil.rmtree(self.pred_repo_dir, ignore_errors=True)
+                    clone = subprocess.run(
+                        ["git", "clone", SOURCE_REPOSITORY_URL, str(self.pred_repo_dir)],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                    if clone.returncode != 0:
+                        raise RuntimeError(f"git clone failed: {clone.stderr.strip() or clone.stdout.strip()}")
             else:
-                subprocess.run(
+                clone = subprocess.run(
                     ["git", "clone", SOURCE_REPOSITORY_URL, str(self.pred_repo_dir)],
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    capture_output=True,
+                    text=True,
                 )
+                if clone.returncode != 0:
+                    raise RuntimeError(f"git clone failed: {clone.stderr.strip() or clone.stdout.strip()}")
 
             predictions_src_dir = self.pred_repo_dir / "predictions"
             if not predictions_src_dir.exists():
@@ -998,8 +1013,36 @@ class LeaderboardService:
             for key, value in mapping.items():
                 normalized_map[Path(str(key)).stem] = value
             return files, normalized_map, references
-        except Exception:
-            return [], {}, {}
+        except Exception as exc:
+            self._set_state(message=f"Git sync failed: {type(exc).__name__}: {exc}. Trying ZIP fallback.")
+            try:
+                zip_url = "https://codeload.github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions/zip/refs/heads/main"
+                zip_path = self.external_dir / "predictions_repo.zip"
+                with urlopen(zip_url, timeout=60) as response:
+                    zip_path.write_bytes(response.read())
+                extract_root = self.external_dir / "predictions_repo_zip"
+                if extract_root.exists():
+                    shutil.rmtree(extract_root, ignore_errors=True)
+                extract_root.mkdir(parents=True, exist_ok=True)
+                with zipfile.ZipFile(zip_path, "r") as zf:
+                    zf.extractall(extract_root)
+                dirs = [p for p in extract_root.iterdir() if p.is_dir()]
+                if not dirs:
+                    return [], {}, {}
+                repo_dir = dirs[0]
+                predictions_src_dir = repo_dir / "predictions"
+                if not predictions_src_dir.exists():
+                    predictions_src_dir = repo_dir
+                valid_suffixes = {".gff", ".gff3", ".txt", ".gtf"}
+                files = sorted(
+                    [path for path in predictions_src_dir.rglob("*") if path.is_file() and path.suffix.lower() in valid_suffixes],
+                    key=lambda path: str(path).lower(),
+                )
+                self._set_state(message=f"ZIP fallback loaded {len(files)} prediction file(s).")
+                return files, {}, {}
+            except Exception as fallback_exc:
+                self._set_state(error=f"Prediction sync failed: {type(fallback_exc).__name__}: {fallback_exc}")
+                return [], {}, {}
 
     def _display_name_for_path(self, path: Path) -> str:
         mapping = self._display_name_mapping or self._local_mapping()
