@@ -987,7 +987,7 @@ export default function LeaderboardPanel() {
             <br />
             To submit your model jump <a href={overview?.source_repository_url || "https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git"} target="_blank" rel="noreferrer">here</a>
           </Typography>
-        </Stack>
+                  </Stack>
       </Paper>
 
       <Paper className="glass-card" id="main-metrics" sx={{ p: { xs: 2.2, md: 3 }, order: 1, mt: 3.2 }}>
@@ -1071,6 +1071,7 @@ export default function LeaderboardPanel() {
                       Rank
                     </TableCell>
                     <TableCell rowSpan={2} sx={{ width: 280, minWidth: 280 }}>Model</TableCell>
+                    <TableCell rowSpan={2} sx={{ width: 165, minWidth: 165 }}>Annotated genes</TableCell>
                     <TableCell colSpan={4} align="center">
                       Exon
                     </TableCell>
@@ -1087,6 +1088,7 @@ export default function LeaderboardPanel() {
                     <TableCell>MI w/o seg.</TableCell>
                     <TableCell className="rank-column-highlight">F1 with seg.</TableCell>
                     <TableCell>MI with seg.</TableCell>
+                    <TableCell>Annotated genes</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1111,6 +1113,7 @@ export default function LeaderboardPanel() {
                           )}
                         </Stack>
                       </TableCell>
+                      <TableCell sx={{ width: 165, minWidth: 165 }}>{formatScore(row.annotated_genes, 0)}</TableCell>
                       <TableCell
                         sx={
                           mainColumnHighlights.exon_interval_f1 !== undefined &&
@@ -1193,6 +1196,7 @@ export default function LeaderboardPanel() {
                       >
                         {formatScore(row.cds_segmentation_mi, 0)}
                       </TableCell>
+                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1315,6 +1319,7 @@ export default function LeaderboardPanel() {
                     <TableCell rowSpan={2} sx={{ width: 280, minWidth: 280 }}>
                       Model
                     </TableCell>
+                    <TableCell rowSpan={2} sx={{ width: 165, minWidth: 165 }}>Annotated genes</TableCell>
                     <TableCell colSpan={4} align="center">
                       Interval level
                     </TableCell>
@@ -1324,6 +1329,7 @@ export default function LeaderboardPanel() {
                     <TableCell colSpan={3} align="center">
                       Exact part level
                     </TableCell>
+                    <TableCell rowSpan={2}>Annotated genes</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell>Precision</TableCell>
@@ -1360,6 +1366,7 @@ export default function LeaderboardPanel() {
                           )}
                         </Stack>
                       </TableCell>
+                      <TableCell sx={{ width: 165, minWidth: 165 }}>{formatScore(row.annotated_genes, 0)}</TableCell>
                       <TableCell
                         sx={
                           fullColumnHighlights.interval_precision !== undefined &&
@@ -1470,6 +1477,7 @@ export default function LeaderboardPanel() {
                       >
                         {formatScore(row.part_f1)}
                       </TableCell>
+                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1543,22 +1551,26 @@ export default function LeaderboardPanel() {
                 <TableHead>
                   <TableRow>
                     <TableCell>Group</TableCell>
+                    <TableCell sx={{ width: 165, minWidth: 165 }}>Annotated genes</TableCell>
                     <TableCell>Interval F1</TableCell>
                     <TableCell>Interval MI</TableCell>
                     <TableCell>Segmentation F1</TableCell>
                     <TableCell>Segmentation MI</TableCell>
                     <TableCell>Exact part F1</TableCell>
+                    <TableCell>Annotated genes</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {stratifier.rows.map((row) => (
                     <TableRow key={row.group}>
                       <TableCell>{row.group}</TableCell>
+                      <TableCell sx={{ width: 165, minWidth: 165 }}>{formatScore(row.annotated_genes, 0)}</TableCell>
                       <TableCell>{formatScore(row.interval_f1)}</TableCell>
                       <TableCell>{formatScore(row.interval_mi, 0)}</TableCell>
                       <TableCell>{formatScore(row.segmentation_f1)}</TableCell>
                       <TableCell>{formatScore(row.segmentation_mi, 0)}</TableCell>
                       <TableCell>{formatScore(row.part_f1)}</TableCell>
+                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
