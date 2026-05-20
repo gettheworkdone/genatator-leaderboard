@@ -488,7 +488,11 @@ class LeaderboardService:
                 ready=True,
                 missing_ground_truth=False,
                 stage="ready",
-                message="Leaderboard is ready." if not failed_models else f"Leaderboard is ready. Skipped {len(failed_models)} model(s).",
+                message=(
+                    "Leaderboard is ready with 0 models. Prediction repository was reachable but no valid prediction files were loaded."
+                    if not new_models
+                    else ("Leaderboard is ready." if not failed_models else f"Leaderboard is ready. Skipped {len(failed_models)} model(s).")
+                ),
                 error=failed_details or None,
                 current_model=None,
                 finished_at=time.time(),
@@ -923,7 +927,9 @@ class LeaderboardService:
     def _prediction_files_and_mapping(self) -> tuple[list[Path], dict[str, Any], dict[str, str]]:
         remote_files, remote_mapping, remote_references = self._sync_predictions_repo()
         if remote_files:
+            self._set_state(message=f"Loaded {len(remote_files)} prediction file(s) from remote repository.")
             return remote_files, remote_mapping, remote_references
+        self._set_state(message="Remote prediction sync yielded 0 files. Falling back to local leaderboard_data/predictions.")
         return self._local_prediction_files(), self._local_mapping(), {}
 
     def _local_prediction_files(self) -> list[Path]:
@@ -932,10 +938,10 @@ class LeaderboardService:
         return sorted(
             [
                 path
-                for path in self.predictions_dir.iterdir()
+                for path in self.predictions_dir.rglob("*")
                 if path.is_file() and path.suffix.lower() in {".gff", ".gff3", ".txt", ".gtf"}
             ],
-            key=lambda path: path.name.lower(),
+            key=lambda path: str(path).lower(),
         )
 
     def _local_mapping(self) -> dict[str, Any]:
@@ -985,8 +991,8 @@ class LeaderboardService:
 
             valid_suffixes = {".gff", ".gff3", ".txt", ".gtf"}
             files = sorted(
-                [path for path in predictions_src_dir.iterdir() if path.is_file() and path.suffix.lower() in valid_suffixes],
-                key=lambda path: path.name.lower(),
+                [path for path in predictions_src_dir.rglob("*") if path.is_file() and path.suffix.lower() in valid_suffixes],
+                key=lambda path: str(path).lower(),
             )
             normalized_map: dict[str, Any] = {}
             for key, value in mapping.items():
