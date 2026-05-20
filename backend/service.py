@@ -476,12 +476,18 @@ class LeaderboardService:
 
             with self._lock:
                 self._permanent_models = new_models
+            failed_details = ""
+            if failed_models:
+                preview = failed_models[:8]
+                tail = "" if len(failed_models) <= 8 else f"\n... and {len(failed_models) - 8} more."
+                failed_details = "Skipped model files:\n" + "\n".join(preview) + tail
             self._set_state(
                 running=False,
                 ready=True,
                 missing_ground_truth=False,
                 stage="ready",
                 message="Leaderboard is ready." if not failed_models else f"Leaderboard is ready. Skipped {len(failed_models)} model(s).",
+                error=failed_details or None,
                 current_model=None,
                 finished_at=time.time(),
             )
