@@ -14,11 +14,9 @@ from gene_level_final_final_fix import GeneLevelEvaluator
 from .gff_io import gff_text_to_dataframe
 from .service import (
     BRANCHES,
-    CDS_GENE_BIOTYPES,
     CDS_TRANSCRIPT_TYPES,
     DEFAULT_K,
     DEFAULT_K_VALUES,
-    EXON_GENE_BIOTYPES,
     EXON_TRANSCRIPT_TYPES,
     GRAPH_METRICS,
     LeaderboardService,
@@ -98,7 +96,6 @@ def playground_compute(payload: PlaygroundComputeRequest) -> dict[str, Any]:
             true_gff=true_df,
             k_values=payload.k_values,
             use_strand=USE_STRAND,
-            gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
         )
         cds_result = EVALUATOR.evaluate_gff_cds(
@@ -106,7 +103,6 @@ def playground_compute(payload: PlaygroundComputeRequest) -> dict[str, Any]:
             true_gff=true_df,
             k_values=payload.k_values,
             use_strand=USE_STRAND,
-            gene_biotypes=CDS_GENE_BIOTYPES,
             transcript_types=CDS_TRANSCRIPT_TYPES,
         )
     except Exception as exc:
