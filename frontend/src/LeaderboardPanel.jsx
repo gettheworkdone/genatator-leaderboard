@@ -792,7 +792,6 @@ export default function LeaderboardPanel() {
   return (
     <Stack spacing={0}>
       <Paper
-        className="glass-card"
         sx={{
           p: { xs: 1.2, md: 1.4 },
           order: -1,
@@ -800,9 +799,10 @@ export default function LeaderboardPanel() {
           position: "sticky",
           top: 64,
           zIndex: 20,
-          backgroundColor: "transparent",
+          backgroundColor: "transparent !important",
           boxShadow: "none",
           backdropFilter: "none",
+          border: "none",
         }}
       >
         <Stack direction="row" spacing={1} sx={{ overflowX: "auto", whiteSpace: "nowrap", justifyContent: "center" }}>
