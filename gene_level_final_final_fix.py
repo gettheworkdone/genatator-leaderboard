@@ -13,7 +13,6 @@ import pandas as pd
 
 PathLike = Union[str, Path]
 
-
 class GeneLevelEvaluator:
     """
     Gene-level evaluator for two ordinary GFF/GFF3 files.
@@ -75,14 +74,12 @@ class GeneLevelEvaluator:
         true_gff: Union[PathLike, pd.DataFrame],
         k_values: Iterable[int],
         use_strand: bool = False,
-        gene_biotypes: Optional[Union[str, Iterable[str]]] = None,
         transcript_types: Optional[Union[str, Iterable[str]]] = None,
     ) -> Dict[int, Dict[str, object]]:
         common = self._prepare_common_data(
             pred_gff=pred_gff,
             true_gff=true_gff,
             k_values=k_values,
-            gene_biotypes=gene_biotypes,
             transcript_types=transcript_types,
             use_strand=use_strand,
         )
@@ -95,14 +92,12 @@ class GeneLevelEvaluator:
         true_gff: Union[PathLike, pd.DataFrame],
         k_values: Iterable[int],
         use_strand: bool = False,
-        gene_biotypes: Optional[Union[str, Iterable[str]]] = None,
         transcript_types: Optional[Union[str, Iterable[str]]] = None,
     ) -> Dict[int, Dict[str, object]]:
         common = self._prepare_common_data(
             pred_gff=pred_gff,
             true_gff=true_gff,
             k_values=k_values,
-            gene_biotypes=gene_biotypes,
             transcript_types=transcript_types,
             use_strand=use_strand,
         )
@@ -280,6 +275,7 @@ class GeneLevelEvaluator:
             "part_level_result": part_level_result,
         }
 
+
     def _evaluate_branch(
         self,
         branch_data: Dict[str, object],
@@ -302,7 +298,6 @@ class GeneLevelEvaluator:
                 allowed_genes=branch_data["interval_allowed_genes"],
             )
             interval_result["matched_pairs"] = self._pairs_to_records(interval_pairs)
-
             segmentation_pairs = self._collect_segmentation_pairs(
                 base_pairs=interval_pairs,
                 pred_parts=branch_data["pred_parts"],
@@ -320,7 +315,6 @@ class GeneLevelEvaluator:
                 allowed_genes=branch_data["segmentation_allowed_genes"],
             )
             segmentation_result["matched_pairs"] = self._pairs_to_records(segmentation_pairs)
-
             results[int(k)] = {
                 "interval-level": interval_result,
                 "segmentation-level": segmentation_result,
@@ -334,23 +328,23 @@ class GeneLevelEvaluator:
         pred_gff: Union[PathLike, pd.DataFrame],
         true_gff: Union[PathLike, pd.DataFrame],
         k_values: Iterable[int],
-        gene_biotypes: Optional[Union[str, Iterable[str]]] = None,
         transcript_types: Optional[Union[str, Iterable[str]]] = None,
         use_strand: bool = False,
     ) -> Dict[str, object]:
         k_values = self._normalize_k_values(k_values)
-        gene_biotypes = self._normalize_string_filter(gene_biotypes)
-        transcript_types = self._normalize_string_filter(transcript_types)
+        transcript_types = self._normalize_transcript_type_filter(transcript_types)
 
         true_df = self._read_gff(true_gff)
         pred_df = self._read_gff(pred_gff)
 
         true_tx_rows = self._extract_true_transcript_rows(
             df=true_df,
-            gene_biotypes=gene_biotypes,
             transcript_types=transcript_types,
         )
-        pred_tx_rows = self._extract_pred_transcript_rows(pred_df)
+        pred_tx_rows = self._extract_pred_transcript_rows(
+            df=pred_df,
+            transcript_types=transcript_types,
+        )
 
         true_tx = self._true_rows_to_transcripts(true_tx_rows, use_strand=use_strand)
         pred_tx = self._pred_rows_to_transcripts(pred_tx_rows, use_strand=use_strand)
@@ -388,9 +382,6 @@ class GeneLevelEvaluator:
             "all_pred_ids": pred_tx["pred_id"].dropna().astype(str).tolist(),
         }
 
-    # ------------------------------------------------------------------
-    # Interval matching
-    # ------------------------------------------------------------------
 
     def _collect_interval_pairs(
         self,
@@ -481,9 +472,6 @@ class GeneLevelEvaluator:
 
         return self._pair_records_to_df(pairs)
 
-    # ------------------------------------------------------------------
-    # Segmentation matching
-    # ------------------------------------------------------------------
 
     def _collect_segmentation_pairs(
         self,
@@ -511,6 +499,11 @@ class GeneLevelEvaluator:
                 continue
 
             if use_strand and str(pred_info.get("strand", "")) != str(true_info.get("strand", "")):
+                continue
+
+            # Interval pairs are already type-aware. This check keeps the
+            # segmentation layer safe if a caller passes precomputed pairs.
+            if str(pred_info.get("transcript_type", "")) != str(true_info.get("transcript_type", "")):
                 continue
 
             pred_segments = pred_info.get(part_name, [])
@@ -596,6 +589,7 @@ class GeneLevelEvaluator:
                     strand=str(row.strand),
                     segments=segments,
                     use_strand=use_strand,
+                    transcript_type=str(getattr(row, "transcript_type", "")),
                 )
             elif mode == "exact":
                 if part_name == "cds":
@@ -607,6 +601,7 @@ class GeneLevelEvaluator:
                         strand=str(row.strand),
                         segments=segments,
                         use_strand=use_strand,
+                        transcript_type=str(getattr(row, "transcript_type", "")),
                     )
                 else:
                     key = self._make_segmentation_key(
@@ -616,6 +611,7 @@ class GeneLevelEvaluator:
                         strand=str(row.strand),
                         segments=segments,
                         use_strand=use_strand,
+                        transcript_type=str(getattr(row, "transcript_type", "")),
                     )
             else:
                 raise ValueError(f"Unsupported segmentation key mode: {mode!r}")
@@ -705,6 +701,7 @@ class GeneLevelEvaluator:
                 mi += 1
         return int(mi)
 
+
     def _pairs_to_records(
         self,
         pairs: pd.DataFrame,
@@ -764,6 +761,7 @@ class GeneLevelEvaluator:
     # Part-level exact metrics
     # ------------------------------------------------------------------
 
+
     def _build_part_level_table(
         self,
         transcripts_df: pd.DataFrame,
@@ -779,6 +777,7 @@ class GeneLevelEvaluator:
             if info is None:
                 continue
 
+            transcript_type = str(getattr(row, "transcript_type", ""))
             segments = info.get(part_name, [])
             for idx, (start, end) in enumerate(segments):
                 records.append(
@@ -787,12 +786,13 @@ class GeneLevelEvaluator:
                         "start": int(start),
                         "end": int(end),
                         "strand": str(row.strand),
+                        "transcript_type": transcript_type,
                         "part_id": f"{transcript_id}:{part_name}:{idx}",
                     }
                 )
 
         if not records:
-            return pd.DataFrame(columns=["seqid", "start", "end", "strand", "part_id"])
+            return pd.DataFrame(columns=["seqid", "start", "end", "strand", "transcript_type", "part_id"])
         return pd.DataFrame(records)
 
     def _build_exact_part_level_result(
@@ -839,6 +839,7 @@ class GeneLevelEvaluator:
             },
         }
 
+
     def _part_key_set(
         self,
         parts_df: pd.DataFrame,
@@ -847,23 +848,15 @@ class GeneLevelEvaluator:
         if parts_df.empty:
             return set()
 
-        cols = ["seqid", "start", "end", "strand"] if use_strand else ["seqid", "start", "end"]
         keys: Set[Tuple[object, ...]] = set()
-
-        for row in parts_df[cols].itertuples(index=False, name=None):
-            key = []
-            for idx, value in enumerate(row):
-                if idx == 0 or (use_strand and idx == len(row) - 1):
-                    key.append("" if self._is_missing_value(value) else str(value))
-                else:
-                    key.append(int(value))
-            keys.add(tuple(key))
+        for row in parts_df.itertuples(index=False):
+            base = [str(row.seqid), int(row.start), int(row.end)]
+            if use_strand:
+                base.append("" if self._is_missing_value(row.strand) else str(row.strand))
+            base.append("" if self._is_missing_value(row.transcript_type) else str(row.transcript_type))
+            keys.add(tuple(base))
 
         return keys
-
-    # ------------------------------------------------------------------
-    # GFF parsing and transcript extraction
-    # ------------------------------------------------------------------
 
     def _read_gff(self, gff: Union[PathLike, pd.DataFrame]) -> pd.DataFrame:
         if isinstance(gff, pd.DataFrame):
@@ -1050,33 +1043,10 @@ class GeneLevelEvaluator:
             parent_gene.loc[missing_gene] = df.loc[missing_gene, "gene_id"].fillna("").astype(str)
         return parent_gene
 
-    def _select_gene_ids_by_biotype(
-        self,
-        df: pd.DataFrame,
-        gene_biotypes: Set[str],
-    ) -> Set[str]:
-        gene_rows = df[df["type_lower"].isin(self.GENE_TYPES)].copy()
-        if gene_rows.empty:
-            return set()
-
-        candidate_cols = ["gene_biotype", "gene_type", "biotype"]
-        biotype_col = None
-        for col in candidate_cols:
-            if col in gene_rows.columns:
-                biotype_col = col
-                break
-
-        if biotype_col is None:
-            return set()
-
-        biotype_values = gene_rows[biotype_col].fillna("").astype(str).str.strip().str.lower()
-        mask = biotype_values.isin(gene_biotypes)
-        return set(gene_rows.loc[mask, "ID"].dropna().astype(str))
 
     def _extract_true_transcript_rows(
         self,
         df: pd.DataFrame,
-        gene_biotypes: Optional[Set[str]],
         transcript_types: Optional[Set[str]],
     ) -> pd.DataFrame:
         gene_ids = set(df.loc[df["type_lower"].isin(self.GENE_TYPES), "ID"].dropna().astype(str))
@@ -1090,13 +1060,9 @@ class GeneLevelEvaluator:
         )
         tx_mask = transcript_like_mask | fallback_mask
 
-        if gene_biotypes is not None:
-            allowed_gene_ids = self._select_gene_ids_by_biotype(df, gene_biotypes)
-            gene_ids = gene_ids & allowed_gene_ids if gene_ids else allowed_gene_ids
-            tx_mask = tx_mask & parent_gene_ids.isin(gene_ids)
-
         if transcript_types is not None:
-            tx_mask = tx_mask & df["type_lower"].isin(transcript_types)
+            canonical_types = df["type_lower"].map(self._canonical_transcript_type)
+            tx_mask = tx_mask & canonical_types.isin(transcript_types)
 
         tx = df.loc[
             tx_mask,
@@ -1105,6 +1071,8 @@ class GeneLevelEvaluator:
 
         if tx.empty:
             raise ValueError("Could not find transcript rows in true GFF.")
+
+        tx["transcript_type_eval"] = tx["type_lower"].map(self._canonical_transcript_type)
 
         tx["transcript_id_final"] = tx["ID"]
         missing_tx = tx["transcript_id_final"].isna() | (tx["transcript_id_final"].astype(str) == "")
@@ -1120,7 +1088,12 @@ class GeneLevelEvaluator:
         tx = tx.drop_duplicates(subset=["transcript_id_final"]).reset_index(drop=True)
         return tx
 
-    def _extract_pred_transcript_rows(self, df: pd.DataFrame) -> pd.DataFrame:
+
+    def _extract_pred_transcript_rows(
+        self,
+        df: pd.DataFrame,
+        transcript_types: Optional[Set[str]] = None,
+    ) -> pd.DataFrame:
         gene_ids = set(df.loc[df["type_lower"].isin(self.GENE_TYPES), "ID"].dropna().astype(str))
         parent_gene_ids = self._get_parent_gene_ids(df)
 
@@ -1132,6 +1105,10 @@ class GeneLevelEvaluator:
         )
         tx_mask = transcript_like_mask | fallback_mask
 
+        if transcript_types is not None:
+            canonical_types = df["type_lower"].map(self._canonical_transcript_type)
+            tx_mask = tx_mask & canonical_types.isin(transcript_types)
+
         tx = df.loc[
             tx_mask,
             ["seqid", "start", "end", "strand", "type_lower", "ID", "Parent", "transcript_id"],
@@ -1139,6 +1116,8 @@ class GeneLevelEvaluator:
 
         if tx.empty:
             raise ValueError("Could not find transcript rows in prediction GFF.")
+
+        tx["transcript_type_eval"] = tx["type_lower"].map(self._canonical_transcript_type)
 
         tx["pred_id"] = tx["ID"]
         missing_pred_id = tx["pred_id"].isna() | (tx["pred_id"].astype(str) == "")
@@ -1150,38 +1129,49 @@ class GeneLevelEvaluator:
         tx = tx.drop_duplicates(subset=["pred_id"]).reset_index(drop=True)
         return tx
 
+
     def _true_rows_to_transcripts(self, tx: pd.DataFrame, use_strand: bool) -> pd.DataFrame:
+        transcript_types = tx["transcript_type_eval"].fillna("").astype(str).to_numpy()
         out = pd.DataFrame(
             {
                 "seqid": tx["seqid"].to_numpy(),
                 "start": tx["start"].to_numpy(dtype=int),
                 "end": tx["end"].to_numpy(dtype=int),
                 "strand": tx["strand"].to_numpy(),
+                "transcript_type": transcript_types,
                 "transcript_id": tx["transcript_id_final"].astype(str).to_numpy(),
                 "gene_id": tx["gene_id_final"].astype(str).to_numpy(),
             }
         )
         out["transcript_key"] = [
-            self._make_interval_key(seqid, start, end, strand, use_strand)
-            for seqid, start, end, strand in zip(out["seqid"], out["start"], out["end"], out["strand"])
+            self._make_interval_key(seqid, start, end, strand, use_strand, transcript_type)
+            for seqid, start, end, strand, transcript_type in zip(
+                out["seqid"], out["start"], out["end"], out["strand"], out["transcript_type"]
+            )
         ]
         return out.reset_index(drop=True)
 
+
     def _pred_rows_to_transcripts(self, tx: pd.DataFrame, use_strand: bool) -> pd.DataFrame:
+        transcript_types = tx["transcript_type_eval"].fillna("").astype(str).to_numpy()
         out = pd.DataFrame(
             {
                 "seqid": tx["seqid"].to_numpy(),
                 "start": tx["start"].to_numpy(dtype=int),
                 "end": tx["end"].to_numpy(dtype=int),
                 "strand": tx["strand"].to_numpy(),
+                "transcript_type": transcript_types,
                 "pred_id": tx["pred_id"].astype(str).to_numpy(),
             }
         )
         out["object_key"] = [
-            self._make_interval_key(seqid, start, end, strand, use_strand)
-            for seqid, start, end, strand in zip(out["seqid"], out["start"], out["end"], out["strand"])
+            self._make_interval_key(seqid, start, end, strand, use_strand, transcript_type)
+            for seqid, start, end, strand, transcript_type in zip(
+                out["seqid"], out["start"], out["end"], out["strand"], out["transcript_type"]
+            )
         ]
         return out.reset_index(drop=True)
+
 
     def _extract_transcript_parts(
         self,
@@ -1196,9 +1186,11 @@ class GeneLevelEvaluator:
         for row in transcript_rows.itertuples(index=False):
             final_id = str(getattr(row, id_col))
             strand = str(getattr(row, "strand"))
+            transcript_type = str(getattr(row, "transcript_type_eval", self._canonical_transcript_type(getattr(row, "type_lower", ""))))
 
             transcript_info[final_id] = {
                 "strand": strand,
+                "transcript_type": transcript_type,
                 "exon": [],
                 "cds": [],
             }
@@ -1268,6 +1260,7 @@ class GeneLevelEvaluator:
 
         return transcripts_df.loc[np.array(keep_mask, dtype=bool)].reset_index(drop=True)
 
+
     def _build_outer_part_interval_transcripts(
         self,
         transcripts_df: pd.DataFrame,
@@ -1291,12 +1284,14 @@ class GeneLevelEvaluator:
 
             starts = [int(start) for start, _ in segments]
             ends = [int(end) for _, end in segments]
+            transcript_type = str(getattr(row, "transcript_type", info.get("transcript_type", "")))
 
             record: Dict[str, object] = {
                 "seqid": str(row.seqid),
                 "start": int(min(starts)),
                 "end": int(max(ends)),
                 "strand": str(row.strand),
+                "transcript_type": transcript_type,
                 id_col: transcript_id,
             }
             record["object_key"] = self._make_interval_key(
@@ -1305,6 +1300,7 @@ class GeneLevelEvaluator:
                 end=int(max(ends)),
                 strand=str(row.strand),
                 use_strand=use_strand,
+                transcript_type=transcript_type,
             )
             if keep_gene_id:
                 record["gene_id"] = str(row.gene_id)
@@ -1313,14 +1309,10 @@ class GeneLevelEvaluator:
 
         if not records:
             if keep_gene_id:
-                return pd.DataFrame(columns=["seqid", "start", "end", "strand", "transcript_id", "gene_id", "transcript_key", "object_key"])
-            return pd.DataFrame(columns=["seqid", "start", "end", "strand", "pred_id", "object_key"])
+                return pd.DataFrame(columns=["seqid", "start", "end", "strand", "transcript_type", "transcript_id", "gene_id", "transcript_key", "object_key"])
+            return pd.DataFrame(columns=["seqid", "start", "end", "strand", "transcript_type", "pred_id", "object_key"])
 
         return pd.DataFrame(records).drop_duplicates(subset=[id_col]).reset_index(drop=True)
-
-    # ------------------------------------------------------------------
-    # Small helpers
-    # ------------------------------------------------------------------
 
 
     def _make_interval_key(
@@ -1330,10 +1322,12 @@ class GeneLevelEvaluator:
         end: int,
         strand: str,
         use_strand: bool,
+        transcript_type: str = "",
     ) -> Tuple[object, ...]:
         if use_strand:
-            return (str(seqid), int(start), int(end), str(strand))
-        return (str(seqid), int(start), int(end))
+            return (str(seqid), int(start), int(end), str(strand), str(transcript_type))
+        return (str(seqid), int(start), int(end), str(transcript_type))
+
 
     def _make_segmentation_key(
         self,
@@ -1343,10 +1337,11 @@ class GeneLevelEvaluator:
         strand: str,
         segments: Tuple[Tuple[int, int], ...],
         use_strand: bool,
+        transcript_type: str = "",
     ) -> Tuple[object, ...]:
         if use_strand:
-            return (str(seqid), int(start), int(end), str(strand), segments)
-        return (str(seqid), int(start), int(end), segments)
+            return (str(seqid), int(start), int(end), str(strand), str(transcript_type), segments)
+        return (str(seqid), int(start), int(end), str(transcript_type), segments)
 
     def _normalize_k_values(self, k_values: Iterable[int]) -> List[int]:
         values = sorted({int(k) for k in k_values})
@@ -1356,7 +1351,22 @@ class GeneLevelEvaluator:
             raise ValueError("k must be >= 0")
         return values
 
-    def _normalize_string_filter(
+
+    @staticmethod
+    def _canonical_transcript_type(value: object) -> str:
+        text = "" if value is None else str(value).strip().lower()
+        aliases = {
+            "mrna": "mrna",
+            "messenger_rna": "mrna",
+            "lncrna": "lnc_rna",
+            "lnc_rna": "lnc_rna",
+            "lnc-rna": "lnc_rna",
+            "long_noncoding_rna": "lnc_rna",
+            "long_non_coding_rna": "lnc_rna",
+        }
+        return aliases.get(text, text)
+
+    def _normalize_transcript_type_filter(
         self,
         values: Optional[Union[str, Iterable[str]]],
     ) -> Optional[Set[str]]:
@@ -1365,17 +1375,374 @@ class GeneLevelEvaluator:
         if isinstance(values, str):
             values = [values]
         normalized = {
-            str(value).strip().lower()
+            self._canonical_transcript_type(value)
             for value in values
             if str(value).strip() != ""
         }
         return normalized or None
 
+    def build_annotated_transcripts_detailed(
+        self,
+        exon_detailed: Dict[str, Dict[str, object]],
+        cds_detailed: Dict[str, Dict[str, object]],
+        transcript_types: Optional[Union[str, Iterable[str]]] = ("mRNA", "lnc_RNA"),
+        mrna_type: str = "mRNA",
+    ) -> Dict[str, Dict[str, object]]:
+        """
+        Return exon_detailed with an additional annotated_transcripts field.
+
+        Inputs must be outputs of build_detailed_info() for exon and CDS branches:
+            exon_detailed = build_detailed_info(exon_result, ...)
+            cds_detailed  = build_detailed_info(cds_result, ...)
+
+        Rules:
+        - For mRNA, a true transcript is annotated only by prediction IDs that
+          match the same true_tx_id at segmentation level in both exon_detailed
+          and cds_detailed. For each shared pred_id, min_k is
+          max(exon_min_k, cds_min_k).
+        - For all non-mRNA transcript types, exon segmentation-level predictions
+          are used as annotated_transcripts.
+
+        Output has the same top-level structure as exon_detailed. Each transcript
+        record receives:
+            "annotated_transcripts": [
+                {"pred_id": str, "min_k": int},
+                ...
+            ]
+        """
+        if not exon_detailed:
+            raise ValueError("exon_detailed is empty")
+        if cds_detailed is None:
+            cds_detailed = {}
+
+        selected_types = self._normalize_transcript_type_filter(transcript_types)
+        mrna_type = self._canonical_transcript_type(mrna_type)
+
+        def prediction_min_k_by_pred_id(info: Dict[str, object]) -> Dict[str, int]:
+            predictions = (
+                info.get("segmentation-level", {})
+                .get("predictions", [])
+            )
+            if not isinstance(predictions, list):
+                return {}
+
+            by_pred_id: Dict[str, int] = {}
+            for prediction in predictions:
+                if not isinstance(prediction, dict):
+                    continue
+
+                pred_id = str(prediction.get("pred_id", ""))
+                if not pred_id:
+                    continue
+
+                try:
+                    min_k = int(prediction.get("min_k"))
+                except (TypeError, ValueError):
+                    continue
+
+                if pred_id not in by_pred_id or min_k < by_pred_id[pred_id]:
+                    by_pred_id[pred_id] = int(min_k)
+
+            return by_pred_id
+
+        output = deepcopy(exon_detailed)
+
+        for true_tx_id, exon_info in exon_detailed.items():
+            if not isinstance(exon_info, dict):
+                continue
+
+            tx_id = str(true_tx_id)
+            tx_type = self._canonical_transcript_type(exon_info.get("transcript_type", ""))
+            annotated_predictions: List[Dict[str, object]] = []
+
+            if selected_types is None or tx_type in selected_types:
+                exon_pred_to_k = prediction_min_k_by_pred_id(exon_info)
+
+                if tx_type == mrna_type:
+                    cds_info = cds_detailed.get(true_tx_id, {})
+                    if not isinstance(cds_info, dict):
+                        cds_info = cds_detailed.get(tx_id, {})
+                    cds_pred_to_k = prediction_min_k_by_pred_id(cds_info) if isinstance(cds_info, dict) else {}
+
+                    shared_pred_ids = set(exon_pred_to_k) & set(cds_pred_to_k)
+                    annotated_predictions = [
+                        {
+                            "pred_id": str(pred_id),
+                            "min_k": int(max(exon_pred_to_k[pred_id], cds_pred_to_k[pred_id])),
+                        }
+                        for pred_id in shared_pred_ids
+                    ]
+                else:
+                    annotated_predictions = [
+                        {"pred_id": str(pred_id), "min_k": int(min_k)}
+                        for pred_id, min_k in exon_pred_to_k.items()
+                    ]
+
+            annotated_predictions = sorted(
+                annotated_predictions,
+                key=lambda item: (int(item["min_k"]), str(item["pred_id"])),
+            )
+
+            if isinstance(output.get(true_tx_id), dict):
+                output[true_tx_id]["annotated_transcripts"] = annotated_predictions
+            elif isinstance(output.get(tx_id), dict):
+                output[tx_id]["annotated_transcripts"] = annotated_predictions
+
+        return output
+
+    def build_annotated_genes(
+        self,
+        exon_result: Dict[int, Dict[str, object]],
+        cds_result: Dict[int, Dict[str, object]],
+        transcript_types: Optional[Union[str, Iterable[str]]] = ("mRNA", "lnc_RNA"),
+        mrna_type: str = "mRNA",
+        include_gene_ids: bool = False,
+    ) -> Dict[str, Dict[str, Dict[int, object]]]:
+        """
+        Count annotated genes by strand, chromosome, and transcript_type.
+
+        Inputs must be outputs of:
+            evaluate_gff_exon(...)
+            evaluate_gff_cds(...)
+
+        Rules:
+        - mRNA genes are counted only through transcript-level matches where the
+          same true_tx_id is matched by the same pred_id at segmentation level in
+          both exon_result and cds_result at the same k.
+        - All other transcript types are counted using exon segmentation-level
+          matches only.
+
+        Output format is stratifier-like:
+            {
+                "strand": {
+                    "+": {k: {"count": int}, ...},
+                    "-": {k: {"count": int}, ...},
+                },
+                "chromosome": {
+                    "chr1": {k: {"count": int}, ...},
+                    ...
+                },
+                "transcript_type": {
+                    "mrna": {k: {"count": int}, ...},
+                    "lnc_rna": {k: {"count": int}, ...},
+                },
+            }
+
+        If include_gene_ids=True, leaf values are:
+            {"count": int, "gene_ids": [str, ...]}
+        """
+        if not exon_result:
+            raise ValueError("exon_result is empty")
+        if cds_result is None:
+            cds_result = {}
+
+        k_values = self._normalize_k_values(
+            set(exon_result.keys()) | set(cds_result.keys())
+        )
+
+        selected_types = self._normalize_transcript_type_filter(transcript_types)
+        mrna_type = self._canonical_transcript_type(mrna_type)
+        group_names = ["strand", "chromosome", "transcript_type"]
+
+        def is_segments_like(value: object) -> bool:
+            if not isinstance(value, (tuple, list)) or isinstance(value, str):
+                return False
+            if not value:
+                return True
+            first = value[0]
+            return isinstance(first, (tuple, list)) and len(first) == 2
+
+        def parse_obj_key(obj_key: object) -> Dict[str, str]:
+            if isinstance(obj_key, list):
+                obj_key = tuple(obj_key)
+            if not isinstance(obj_key, tuple):
+                return {"chromosome": "", "strand": "", "transcript_type": ""}
+
+            if len(obj_key) >= 6:
+                # (seqid, start, end, strand, transcript_type, segments)
+                return {
+                    "chromosome": str(obj_key[0]),
+                    "strand": str(obj_key[3]),
+                    "transcript_type": self._canonical_transcript_type(obj_key[4]),
+                }
+
+            if len(obj_key) == 5:
+                if is_segments_like(obj_key[4]):
+                    # (seqid, start, end, transcript_type, segments)
+                    return {
+                        "chromosome": str(obj_key[0]),
+                        "strand": "",
+                        "transcript_type": self._canonical_transcript_type(obj_key[3]),
+                    }
+                # (seqid, start, end, strand, transcript_type)
+                return {
+                    "chromosome": str(obj_key[0]),
+                    "strand": str(obj_key[3]),
+                    "transcript_type": self._canonical_transcript_type(obj_key[4]),
+                }
+
+            if len(obj_key) == 4:
+                # (seqid, start, end, transcript_type)
+                return {
+                    "chromosome": str(obj_key[0]),
+                    "strand": "",
+                    "transcript_type": self._canonical_transcript_type(obj_key[3]),
+                }
+
+            return {
+                "chromosome": str(obj_key[0]) if len(obj_key) >= 1 else "",
+                "strand": "",
+                "transcript_type": "",
+            }
+
+        def records_from_pairs(matched_pairs: List[Dict[str, object]]) -> List[Dict[str, str]]:
+            records: List[Dict[str, str]] = []
+
+            for pair in matched_pairs:
+                if not isinstance(pair, dict):
+                    continue
+
+                gene_id = str(pair.get("gene_id", ""))
+                true_tx_id = str(pair.get("true_tx_id", ""))
+                pred_id = str(pair.get("pred_id", ""))
+                if not gene_id or not true_tx_id or not pred_id:
+                    continue
+
+                attrs = parse_obj_key(pair.get("true_obj_key"))
+                transcript_type = attrs.get("transcript_type", "")
+                if not transcript_type:
+                    continue
+                if selected_types is not None and transcript_type not in selected_types:
+                    continue
+
+                records.append(
+                    {
+                        "gene_id": gene_id,
+                        "true_tx_id": true_tx_id,
+                        "pred_id": pred_id,
+                        "chromosome": attrs.get("chromosome", ""),
+                        "strand": attrs.get("strand", ""),
+                        "transcript_type": transcript_type,
+                    }
+                )
+
+            return records
+
+        def annotated_records_for_k(k: int) -> List[Dict[str, str]]:
+            exon_records = records_from_pairs(
+                exon_result.get(int(k), {})
+                .get("segmentation-level", {})
+                .get("matched_pairs", [])
+            )
+            cds_records = records_from_pairs(
+                cds_result.get(int(k), {})
+                .get("segmentation-level", {})
+                .get("matched_pairs", [])
+            )
+
+            cds_mrna_keys = {
+                (record["true_tx_id"], record["pred_id"])
+                for record in cds_records
+                if record["transcript_type"] == mrna_type
+            }
+
+            annotated: List[Dict[str, str]] = []
+            seen = set()
+
+            for record in exon_records:
+                tx_type = record["transcript_type"]
+
+                if tx_type == mrna_type:
+                    if (record["true_tx_id"], record["pred_id"]) not in cds_mrna_keys:
+                        continue
+
+                key = (
+                    record["gene_id"],
+                    record["true_tx_id"],
+                    record["pred_id"],
+                    record["chromosome"],
+                    record["strand"],
+                    record["transcript_type"],
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+                annotated.append(record)
+
+            return annotated
+
+        def groups_from_records(records: List[Dict[str, str]]) -> Dict[str, Dict[str, Set[str]]]:
+            grouped: Dict[str, Dict[str, Set[str]]] = {
+                "strand": {},
+                "chromosome": {},
+                "transcript_type": {},
+            }
+
+            for record in records:
+                gene_id = record["gene_id"]
+                chromosome = record.get("chromosome", "")
+                strand = record.get("strand", "")
+                transcript_type = record.get("transcript_type", "")
+
+                if chromosome:
+                    grouped["chromosome"].setdefault(chromosome, set()).add(gene_id)
+                if strand:
+                    grouped["strand"].setdefault(strand, set()).add(gene_id)
+                if transcript_type:
+                    grouped["transcript_type"].setdefault(transcript_type, set()).add(gene_id)
+
+            return grouped
+
+        annotated_by_k = {
+            int(k): groups_from_records(annotated_records_for_k(int(k)))
+            for k in k_values
+        }
+
+        group_values: Dict[str, Set[str]] = {group_name: set() for group_name in group_names}
+        for grouped in annotated_by_k.values():
+            for group_name in group_names:
+                group_values[group_name].update(grouped[group_name].keys())
+
+        # Keep requested transcript types in the output even if no genes were annotated.
+        if selected_types is not None:
+            group_values["transcript_type"].update(selected_types)
+
+        output: Dict[str, Dict[str, Dict[int, object]]] = {
+            group_name: {
+                group_value: {}
+                for group_value in sorted(group_values[group_name])
+            }
+            for group_name in group_names
+        }
+
+        for k in k_values:
+            grouped = annotated_by_k[int(k)]
+
+            for group_name in group_names:
+                for group_value in sorted(group_values[group_name]):
+                    genes = set(grouped[group_name].get(group_value, set()))
+
+                    if include_gene_ids:
+                        output[group_name].setdefault(group_value, {})[int(k)] = {
+                            "count": int(len(genes)),
+                            "gene_ids": sorted(genes),
+                        }
+                    else:
+                        output[group_name].setdefault(group_value, {})[int(k)] = {
+                            "count": int(len(genes)),
+                        }
+
+        return output
+
+
     def _group_columns(self, use_strand: bool) -> List[str]:
-        return ["seqid", "strand"] if use_strand else ["seqid"]
+        if use_strand:
+            return ["seqid", "strand", "transcript_type"]
+        return ["seqid", "transcript_type"]
 
     def _empty_pair_df(self) -> pd.DataFrame:
         return pd.DataFrame(columns=self.PAIR_COLUMNS)
+
 
     def _pair_records_to_df(
         self,
@@ -1388,19 +1755,12 @@ class GeneLevelEvaluator:
         out = out.drop_duplicates(subset=self.PAIR_COLUMNS).reset_index(drop=True)
         return out
 
-
-
-    # ------------------------------------------------------------------
-    # Post-hoc utilities based on branch results
-    # ------------------------------------------------------------------
-
     def build_stratifier(
         self,
         branch_result: Dict[int, Dict[str, object]],
         pred_gff: Union[PathLike, pd.DataFrame],
         true_gff: Union[PathLike, pd.DataFrame],
         use_strand: bool = False,
-        gene_biotypes: Optional[Union[str, Iterable[str]]] = None,
         transcript_types: Optional[Union[str, Iterable[str]]] = None,
     ) -> Dict[str, Dict[str, Dict[int, Dict[str, object]]]]:
         context = self._prepare_posthoc_context(
@@ -1408,7 +1768,6 @@ class GeneLevelEvaluator:
             pred_gff=pred_gff,
             true_gff=true_gff,
             use_strand=use_strand,
-            gene_biotypes=gene_biotypes,
             transcript_types=transcript_types,
         )
 
@@ -1419,12 +1778,12 @@ class GeneLevelEvaluator:
         true_attr_maps = {
             "strand": self._attribute_map(context["common"]["true_tx_rows"], "transcript_id_final", "strand"),
             "chromosome": self._attribute_map(context["common"]["true_tx_rows"], "transcript_id_final", "seqid"),
-            "transcript_type": self._attribute_map(context["common"]["true_tx_rows"], "transcript_id_final", "type_lower"),
+            "transcript_type": self._attribute_map(context["common"]["true_tx_rows"], "transcript_id_final", "transcript_type_eval"),
         }
         pred_attr_maps = {
             "strand": self._attribute_map(context["common"]["pred_tx_rows"], "pred_id", "strand"),
             "chromosome": self._attribute_map(context["common"]["pred_tx_rows"], "pred_id", "seqid"),
-            "transcript_type": self._attribute_map(context["common"]["pred_tx_rows"], "pred_id", "type_lower"),
+            "transcript_type": self._attribute_map(context["common"]["pred_tx_rows"], "pred_id", "transcript_type_eval"),
         }
 
         stratifier: Dict[str, Dict[str, Dict[int, Dict[str, object]]]] = {}
@@ -1585,7 +1944,6 @@ class GeneLevelEvaluator:
         pred_gff: Union[PathLike, pd.DataFrame],
         true_gff: Union[PathLike, pd.DataFrame],
         use_strand: bool = False,
-        gene_biotypes: Optional[Union[str, Iterable[str]]] = None,
         transcript_types: Optional[Union[str, Iterable[str]]] = None,
     ) -> Dict[str, Dict[str, object]]:
         context = self._prepare_posthoc_context(
@@ -1593,7 +1951,6 @@ class GeneLevelEvaluator:
             pred_gff=pred_gff,
             true_gff=true_gff,
             use_strand=use_strand,
-            gene_biotypes=gene_biotypes,
             transcript_types=transcript_types,
         )
 
@@ -1614,7 +1971,7 @@ class GeneLevelEvaluator:
         true_type_map = self._attribute_map(
             context["common"]["true_tx_rows"],
             "transcript_id_final",
-            "type_lower",
+            "transcript_type_eval",
         )
         interval_pred_by_true = self._pred_min_k_by_true_tx(interval_pairs)
         segmentation_pred_by_true = self._pred_min_k_by_true_tx(segmentation_pairs)
@@ -1668,7 +2025,6 @@ class GeneLevelEvaluator:
         pred_gff: Union[PathLike, pd.DataFrame],
         true_gff: Union[PathLike, pd.DataFrame],
         use_strand: bool,
-        gene_biotypes: Optional[Union[str, Iterable[str]]],
         transcript_types: Optional[Union[str, Iterable[str]]],
     ) -> Dict[str, object]:
         if not branch_result:
@@ -1685,7 +2041,6 @@ class GeneLevelEvaluator:
             pred_gff=pred_gff,
             true_gff=true_gff,
             k_values=k_values,
-            gene_biotypes=gene_biotypes,
             transcript_types=transcript_types,
             use_strand=use_strand,
         )
@@ -1742,6 +2097,7 @@ class GeneLevelEvaluator:
         if df.empty or not selected_ids:
             return df.iloc[0:0].copy()
         return df.loc[df[id_col].astype(str).isin(selected_ids)].reset_index(drop=True)
+
 
     def _records_to_pair_df(
         self,
@@ -1841,20 +2197,58 @@ if __name__ == "__main__":
         true_gff=gt_gff,
         k_values=range(0, 501),
         use_strand=True,
-        gene_biotypes=["protein_coding", "lncRNA"],
         transcript_types=["mRNA", "lnc_RNA"],
     )
-    print(exon_result[250])
-    exit()
 
     cds_result = evaluator.evaluate_gff_cds(
         pred_gff=pred_gff,
         true_gff=gt_gff,
         k_values=range(0, 501),
         use_strand=True,
-        gene_biotypes=["protein_coding"],
         transcript_types=["mRNA"],
     )
+
+
+    gene_recovery = evaluator.build_annotated_genes(
+        exon_result=exon_result,
+        cds_result=cds_result,
+        transcript_types=["mRNA", "lnc_RNA"],
+    )
+    print(list(gene_recovery['transcript_type'].keys()))
+    print(gene_recovery['transcript_type']['mrna'][250])
+    print(gene_recovery['transcript_type']['lnc_rna'][250])
+
+    stratifier_output = evaluator.build_stratifier(
+        branch_result=cds_result,
+        pred_gff=pred_gff,
+        true_gff=gt_gff,
+        use_strand=True,
+        transcript_types=["mRNA"],
+    )
+
+    exon_detailed_info_output = evaluator.build_detailed_info(
+        branch_result=exon_result,
+        pred_gff=pred_gff,
+        true_gff=gt_gff,
+        use_strand=True,
+        transcript_types=["mRNA", "lnc_RNA"],
+    )
+
+    cds_detailed_info_output = evaluator.build_detailed_info(
+        branch_result=cds_result,
+        pred_gff=pred_gff,
+        true_gff=gt_gff,
+        use_strand=True,
+        transcript_types=["mRNA"],
+    )
+
+    annotated_transcripts_detailed = evaluator.build_annotated_transcripts_detailed(
+        exon_detailed=exon_detailed_info_output,
+        cds_detailed=cds_detailed_info_output,
+        transcript_types=["mRNA", "lnc_RNA"],
+    )
+
+################################
 
     def remove_matched_pairs(obj):
         if isinstance(obj, dict):
@@ -1868,33 +2262,30 @@ if __name__ == "__main__":
         else:
             return obj
 
-    exon_result = remove_matched_pairs(exon_result[250])
-    print(exon_result)
+    clean_exon_result = remove_matched_pairs(exon_result[250])
+    print(clean_exon_result)
 
-    clean_result = remove_matched_pairs(cds_result[250])
-    print(clean_result)
-    exit()
+    clean_cds_result = remove_matched_pairs(cds_result[250])
+    print(clean_cds_result)
 
 
-    stratifier_output = evaluator.build_stratifier(
-        branch_result=cds_result,
-        pred_gff=pred_gff,
-        true_gff=gt_gff,
-        use_strand=True,
-        gene_biotypes=["protein_coding"],
-        transcript_types=["mRNA"],
-    )
+    #exit()
 
-    detailed_info_output = evaluator.build_detailed_info(
-        branch_result=cds_result,
-        pred_gff=pred_gff,
-        true_gff=gt_gff,
-        use_strand=True,
-        gene_biotypes=["protein_coding"],
-        transcript_types=["mRNA"],
-    )
-    print('+')
-    print(stratifier_output['strand']['+'][0])
+
+    for tx_id, tx_info in annotated_transcripts_detailed.items():
+        transcript_type = str(tx_info.get("transcript_type", "")).strip().lower()
+        annotated = tx_info.get("annotated_transcripts", [])
+
+        if transcript_type == "mrna" and annotated and tx_info['segmentation-level']['gene_contributes_to_mi']:
+            if tx_id not in ["rna-XM_047446924.1", "rna-NM_153325.4", "rna-NM_001412225.1"]:
+                print(tx_id)
+                print(tx_info)
+                break
+    else:
+        print("No mRNA transcript with non-empty annotated_transcripts was found.")
+
+    #print('+')
+    #print(stratifier_output['strand']['+'][0])
     #print('-')
     #print(stratifier_output['strand']['-'][0])
-    print(detailed_info_output)
+    #print(detailed_info_output)
