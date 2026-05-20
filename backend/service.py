@@ -361,6 +361,9 @@ class LeaderboardService:
             )
             transcript["matched_predictions"] = matches
             transcript["matched_prediction_count"] = len(matches)
+            exemplar_detail = selected_models[0].detailed_by_strand[bool(use_strand)].get(branch, {}).get(tx_id) if selected_models else None
+            transcript["annotated_transcripts"] = (exemplar_detail or {}).get("annotated_transcripts", [])
+            transcript["is_annotated"] = bool(transcript["annotated_transcripts"])
 
         return {"branch": branch, "k": selected_k, "gene": gene_data}
 

@@ -791,7 +791,27 @@ export default function LeaderboardPanel() {
 
   return (
     <Stack spacing={0}>
-      <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 }, order: 6, mt: 3.2 }}>
+      <Paper
+        className="glass-card"
+        sx={{ p: { xs: 1.2, md: 1.4 }, order: -1, mt: 0, position: "sticky", top: 64, zIndex: 20 }}
+      >
+        <Stack direction="row" spacing={1} sx={{ overflowX: "auto", whiteSpace: "nowrap" }}>
+          {[
+            ["tldr", "TLDR"],
+            ["main-metrics", "Main metrics"],
+            ["metric-curves", "Metric curves"],
+            ["full-metrics", "Full metrics"],
+            ["stratifier", "Stratifier"],
+            ["detailed-info", "Detailed information"],
+            ["submission", "Benchmark your own annotation"],
+            ["leaderboard-description", "Leaderboard description"],
+          ].map(([id, label]) => (
+            <Button key={id} size="small" href={`#${id}`}>{label}</Button>
+          ))}
+        </Stack>
+      </Paper>
+
+      <Paper className="glass-card hero-card" id="leaderboard-description" sx={{ p: { xs: 2.4, md: 3.4 }, order: 6, mt: 3.2 }}>
         <Stack spacing={2}>
           <SectionTitle title="Leaderboard description" />
 
@@ -860,7 +880,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 7, mt: 3.2 }}>
+      <Paper className="glass-card" id="submission" sx={{ p: { xs: 2.2, md: 3 }, order: 7, mt: 3.2 }}>
         <Stack spacing={1.8}>
           <SectionTitle
             title="Benchmark your own annotation"
@@ -923,7 +943,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 0, mt: 0 }}>
+      <Paper className="glass-card" id="tldr" sx={{ p: { xs: 2.2, md: 3 }, order: 0, mt: 0 }}>
         <Stack spacing={1.4}>
           <SectionTitle title="TLDR" />
           <Typography color="text.secondary" sx={{ fontSize: "0.92rem", lineHeight: 1.55, fontWeight: 700 }}>
@@ -934,7 +954,7 @@ export default function LeaderboardPanel() {
                   </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 1, mt: 3.2 }}>
+      <Paper className="glass-card" id="main-metrics" sx={{ p: { xs: 2.2, md: 3 }, order: 1, mt: 3.2 }}>
         <Stack spacing={2}>
           <Stack
             direction={{ xs: "column", lg: "row" }}
@@ -1015,6 +1035,7 @@ export default function LeaderboardPanel() {
                       Rank
                     </TableCell>
                     <TableCell rowSpan={2} sx={{ width: 280, minWidth: 280 }}>Model</TableCell>
+                    <TableCell rowSpan={2}>Annotated genes</TableCell>
                     <TableCell colSpan={4} align="center">
                       Exon
                     </TableCell>
@@ -1056,6 +1077,7 @@ export default function LeaderboardPanel() {
                           )}
                         </Stack>
                       </TableCell>
+                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                       <TableCell
                         sx={
                           mainColumnHighlights.exon_interval_f1 !== undefined &&
@@ -1148,7 +1170,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 2, mt: 3.2 }}>
+      <Paper className="glass-card" id="metric-curves" sx={{ p: { xs: 2.2, md: 3 }, order: 2, mt: 3.2 }}>
         <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
@@ -1236,7 +1258,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 3, mt: 3.2 }}>
+      <Paper className="glass-card" id="full-metrics" sx={{ p: { xs: 2.2, md: 3 }, order: 3, mt: 3.2 }}>
         <Stack spacing={2}>
           <Stack
             direction={{ xs: "column", lg: "row" }}
@@ -1261,6 +1283,7 @@ export default function LeaderboardPanel() {
                     <TableCell rowSpan={2} sx={{ width: 280, minWidth: 280 }}>
                       Model
                     </TableCell>
+                    <TableCell rowSpan={2}>Annotated genes</TableCell>
                     <TableCell colSpan={4} align="center">
                       Interval level
                     </TableCell>
@@ -1307,6 +1330,7 @@ export default function LeaderboardPanel() {
                           )}
                         </Stack>
                       </TableCell>
+                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                       <TableCell
                         sx={
                           fullColumnHighlights.interval_precision !== undefined &&
@@ -1427,7 +1451,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 4, mt: 3.2 }}>
+      <Paper className="glass-card" id="stratifier" sx={{ p: { xs: 2.2, md: 3 }, order: 4, mt: 3.2 }}>
         <Stack spacing={2}>
           <Stack
             direction={{ xs: "column", lg: "row" }}
@@ -1491,6 +1515,7 @@ export default function LeaderboardPanel() {
                 <TableHead>
                   <TableRow>
                     <TableCell>Group</TableCell>
+                    <TableCell>Annotated genes</TableCell>
                     <TableCell>Interval F1</TableCell>
                     <TableCell>Interval MI</TableCell>
                     <TableCell>Segmentation F1</TableCell>
@@ -1503,6 +1528,7 @@ export default function LeaderboardPanel() {
                   {stratifier.rows.map((row) => (
                     <TableRow key={row.group}>
                       <TableCell>{row.group}</TableCell>
+                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                       <TableCell>{formatScore(row.interval_f1)}</TableCell>
                       <TableCell>{formatScore(row.interval_mi, 0)}</TableCell>
                       <TableCell>{formatScore(row.segmentation_f1)}</TableCell>
@@ -1518,7 +1544,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 5, mt: 3.2 }}>
+      <Paper className="glass-card" id="detailed-info" sx={{ p: { xs: 2.2, md: 3 }, order: 5, mt: 3.2 }}>
         <Stack spacing={2}>
           <Stack
             direction={{ xs: "column", lg: "row" }}
@@ -1624,6 +1650,7 @@ export default function LeaderboardPanel() {
                                   <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                                     <Typography fontWeight={760}>{transcript.transcript_id}</Typography>
                                     <Chip size="small" label={transcript.transcript_type} />
+                                    <Chip size="small" color={transcript.is_annotated ? "success" : "default"} label={transcript.is_annotated ? "✅ Annotated" : "❌ Not annotated"} />
                                     <Chip size="small" variant="outlined" label={`${transcript.length} nt`} />
                                     <Chip
                                       size="small"
