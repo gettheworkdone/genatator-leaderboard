@@ -224,9 +224,9 @@ class LeaderboardService:
             metrics = per_k[int(k)]
             annotated_count = (
                 bundle.annotated_genes_by_strand.get(bool(use_strand), {})
-                .get(int(k), {})
                 .get(rule, {})
                 .get(group_name, {})
+                .get(int(k), {})
                 .get("count", 0)
             )
             rows.append(
