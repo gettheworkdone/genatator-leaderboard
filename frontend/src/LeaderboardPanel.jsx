@@ -931,7 +931,7 @@ export default function LeaderboardPanel() {
             <br />
             To submit your model jump <a href={overview?.source_repository_url || "https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git"} target="_blank" rel="noreferrer">here</a>
           </Typography>
-        </Stack>
+                  </Stack>
       </Paper>
 
       <Paper className="glass-card" sx={{ p: { xs: 2.2, md: 3 }, order: 1, mt: 3.2 }}>
