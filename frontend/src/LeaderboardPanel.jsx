@@ -849,7 +849,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card hero-card" id="leaderboard-description" sx={{ p: { xs: 2.4, md: 3.4 }, order: 6, mt: 3.2 }}>
+      <Paper className="glass-card hero-card" id="leaderboard-description" sx={{ p: { xs: 2.4, md: 3.4 }, order: 6, mt: 3.2, scrollMarginTop: "132px" }}>
         <Stack spacing={2}>
           <SectionTitle title="Leaderboard description" />
 
@@ -918,7 +918,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" id="submission" sx={{ p: { xs: 2.2, md: 3 }, order: 7, mt: 3.2 }}>
+      <Paper className="glass-card" id="submission" sx={{ p: { xs: 2.2, md: 3 }, order: 7, mt: 3.2, scrollMarginTop: "132px" }}>
         <Stack spacing={1.8}>
           <SectionTitle
             title="Benchmark your own annotation"
@@ -981,7 +981,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" id="tldr" sx={{ p: { xs: 2.2, md: 3 }, order: 0, mt: 0 }}>
+      <Paper className="glass-card" id="tldr" sx={{ p: { xs: 2.2, md: 3 }, order: 0, mt: 0, scrollMarginTop: "132px" }}>
         <Stack spacing={1.4}>
           <SectionTitle title="TLDR" />
           <Typography color="text.secondary" sx={{ fontSize: "0.92rem", lineHeight: 1.55, fontWeight: 700 }}>
@@ -992,7 +992,7 @@ export default function LeaderboardPanel() {
                   </Stack>
       </Paper>
 
-      <Paper className="glass-card" id="main-metrics" sx={{ p: { xs: 2.2, md: 3 }, order: 1, mt: 3.2 }}>
+      <Paper className="glass-card" id="main-metrics" sx={{ p: { xs: 2.2, md: 3 }, order: 1, mt: 3.2, scrollMarginTop: "132px" }}>
         <Stack spacing={2}>
           <Stack
             direction={{ xs: "column", lg: "row" }}
@@ -1208,7 +1208,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" id="metric-curves" sx={{ p: { xs: 2.2, md: 3 }, order: 2, mt: 3.2 }}>
+      <Paper className="glass-card" id="metric-curves" sx={{ p: { xs: 2.2, md: 3 }, order: 2, mt: 3.2, scrollMarginTop: "132px" }}>
         <Stack spacing={2}>
           <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={1.2}>
             <SectionTitle
@@ -1296,7 +1296,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" id="full-metrics" sx={{ p: { xs: 2.2, md: 3 }, order: 3, mt: 3.2 }}>
+      <Paper className="glass-card" id="full-metrics" sx={{ p: { xs: 2.2, md: 3 }, order: 3, mt: 3.2, scrollMarginTop: "132px" }}>
         <Stack spacing={2}>
           <Stack
             direction={{ xs: "column", lg: "row" }}
@@ -1489,7 +1489,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" id="stratifier" sx={{ p: { xs: 2.2, md: 3 }, order: 4, mt: 3.2 }}>
+      <Paper className="glass-card" id="stratifier" sx={{ p: { xs: 2.2, md: 3 }, order: 4, mt: 3.2, scrollMarginTop: "132px" }}>
         <Stack spacing={2}>
           <Stack
             direction={{ xs: "column", lg: "row" }}
@@ -1582,7 +1582,7 @@ export default function LeaderboardPanel() {
         </Stack>
       </Paper>
 
-      <Paper className="glass-card" id="detailed-info" sx={{ p: { xs: 2.2, md: 3 }, order: 5, mt: 3.2 }}>
+      <Paper className="glass-card" id="detailed-info" sx={{ p: { xs: 2.2, md: 3 }, order: 5, mt: 3.2, scrollMarginTop: "132px" }}>
         <Stack spacing={2}>
           <Stack
             direction={{ xs: "column", lg: "row" }}
