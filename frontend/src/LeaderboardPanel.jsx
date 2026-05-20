@@ -816,7 +816,23 @@ export default function LeaderboardPanel() {
             ["submission", "Benchmark your own annotation"],
             ["leaderboard-description", "Leaderboard description"],
           ].map(([id, label]) => (
-            <Button key={id} size="small" href={`#${id}`}>{label}</Button>
+            <Button
+              key={id}
+              size="small"
+              href={`#${id}`}
+              variant="contained"
+              sx={{
+                backgroundColor: "#ffffff",
+                color: "primary.main",
+                borderRadius: "999px",
+                textTransform: "none",
+                boxShadow: "0 1px 2px rgba(15, 23, 42, 0.12)",
+                px: 1.6,
+                "&:hover": { backgroundColor: "#f8fafc" },
+              }}
+            >
+              {label}
+            </Button>
           ))}
         </Stack>
       </Paper>
