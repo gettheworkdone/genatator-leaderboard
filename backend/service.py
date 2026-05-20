@@ -26,9 +26,7 @@ SOURCE_REPOSITORY_URL = "https://github.com/alexeyshmelev/genatator-ab-initio-le
 DEFAULT_K_VALUES = list(range(0, 501))
 DEFAULT_K = 250
 USE_STRAND = True
-EXON_GENE_BIOTYPES = ["protein_coding", "lncRNA"]
 EXON_TRANSCRIPT_TYPES = ["mRNA", "lnc_RNA"]
-CDS_GENE_BIOTYPES = ["protein_coding"]
 CDS_TRANSCRIPT_TYPES = ["mRNA"]
 BRANCHES = ("exon", "cds")
 STRATIFIER_LABELS = {
@@ -74,6 +72,7 @@ class ModelBundle:
     branch_results_by_strand: dict[bool, dict[str, dict[int, dict[str, object]]]]
     stratifier_by_strand: dict[bool, dict[str, dict[str, dict[str, dict[int, dict[str, object]]]]]]
     detailed_by_strand: dict[bool, dict[str, dict[str, dict[str, object]]]]
+    annotated_genes_by_strand: dict[bool, dict[int, dict[str, dict[str, dict[str, object]]]]]
     prediction_index: dict[str, dict[str, object]]
     source_file: str | None = None
 
@@ -94,6 +93,7 @@ class ServiceState:
     launched_at: float = field(default_factory=time.time)
     started_at: float | None = None
     finished_at: float | None = None
+    debug_log: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -111,6 +111,7 @@ class ServiceState:
             "launched_at": self.launched_at,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
+            "debug_log": list(self.debug_log),
         }
 
 
@@ -218,6 +219,13 @@ class LeaderboardService:
         rows: list[dict[str, object]] = []
         for group_name, per_k in stratifier_tree[rule].items():
             metrics = per_k[int(k)]
+            annotated_count = (
+                bundle.annotated_genes_by_strand.get(bool(use_strand), {})
+                .get(int(k), {})
+                .get(rule, {})
+                .get(group_name, {})
+                .get("count", 0)
+            )
             rows.append(
                 {
                     "group": group_name,
@@ -232,6 +240,7 @@ class LeaderboardService:
                     "part_precision": metrics["part-level"]["precision"],
                     "part_recall": metrics["part-level"]["recall"],
                     "part_f1": metrics["part-level"]["f1"],
+                    "annotated_genes": annotated_count,
                 }
             )
         rows.sort(key=lambda item: (-float(item["segmentation_f1"]), str(item["group"])))
@@ -374,6 +383,7 @@ class LeaderboardService:
         pred_df = gff_text_to_dataframe(str(pred_gff_text))
         if pred_df.empty:
             raise ValueError("Prediction file parsed to empty data.")
+        pred_df = self._normalize_prediction_gff_for_evaluator(pred_df)
         bundle = self._compute_model_bundle(
             model_id=model_id,
             display_name=display_name,
@@ -416,12 +426,10 @@ class LeaderboardService:
             )
             shared_indices = {
                 "exon": self._build_ground_truth_index(
-                    gene_biotypes=EXON_GENE_BIOTYPES,
                     transcript_types=EXON_TRANSCRIPT_TYPES,
                     use_strand=True,
                 ),
                 "cds": self._build_ground_truth_index(
-                    gene_biotypes=CDS_GENE_BIOTYPES,
                     transcript_types=CDS_TRANSCRIPT_TYPES,
                     use_strand=True,
                 ),
@@ -443,33 +451,45 @@ class LeaderboardService:
             for idx, pred_file in enumerate(files, start=1):
                 display_name = self._display_name_for_path(pred_file)
                 model_id = pred_file.stem
-                pred_df = gff_text_to_dataframe(pred_file.read_text(encoding="utf-8"))
-                if pred_df.empty:
+                try:
+                    pred_df = gff_text_to_dataframe(pred_file.read_text(encoding="utf-8"))
+                    if pred_df.empty:
+                        self._set_state(
+                            message=f"Skipping {display_name}: prediction file parsed to empty data.",
+                        )
+                        continue
+                    pred_df = self._normalize_prediction_gff_for_evaluator(pred_df)
                     self._set_state(
-                        message=f"Skipping {display_name}: prediction file parsed to empty data.",
+                        current_model=display_name,
+                        completed_models=max(idx - 1, 0),
+                        message=f"Computing leaderboard metrics for {display_name} ({idx}/{len(files)}).",
                     )
+                    new_models[model_id] = self._compute_model_bundle(
+                        model_id=model_id,
+                        display_name=display_name,
+                        pred_gff=pred_df,
+                        temporary=False,
+                        source_file=pred_file.name,
+                    )
+                except Exception as exc:
+                    failed_models.append(f"{display_name}: {type(exc).__name__}: {exc}")
+                    self._set_state(message=f"Skipping {display_name}: {type(exc).__name__}: {exc}")
                     continue
-                self._set_state(
-                    current_model=display_name,
-                    completed_models=max(idx - 1, 0),
-                    message=f"Computing leaderboard metrics for {display_name} ({idx}/{len(files)}).",
-                )
-                new_models[model_id] = self._compute_model_bundle(
-                    model_id=model_id,
-                    display_name=display_name,
-                    pred_gff=pred_df,
-                    temporary=False,
-                    source_file=pred_file.name,
-                )
 
             with self._lock:
                 self._permanent_models = new_models
+            failed_details = ""
+            if failed_models:
+                preview = failed_models[:8]
+                tail = "" if len(failed_models) <= 8 else f"\n... and {len(failed_models) - 8} more."
+                failed_details = "Skipped model files:\n" + "\n".join(preview) + tail
             self._set_state(
                 running=False,
                 ready=True,
                 missing_ground_truth=False,
                 stage="ready",
-                message="Leaderboard is ready.",
+                message="Leaderboard is ready." if not failed_models else f"Leaderboard is ready. Skipped {len(failed_models)} model(s).",
+                error=failed_details or None,
                 current_model=None,
                 finished_at=time.time(),
             )
@@ -495,6 +515,7 @@ class LeaderboardService:
                 if not self.ground_truth_path.exists():
                     continue
                 pred_df = gff_text_to_dataframe(str(job["pred_gff_text"]))
+                pred_df = self._normalize_prediction_gff_for_evaluator(pred_df)
                 model_id = f"tmp-{_slugify(str(job['model_name']))}-{job['job_id'][:8]}"
                 bundle = self._compute_model_bundle(
                     model_id=model_id,
@@ -529,60 +550,77 @@ class LeaderboardService:
         branch_results_by_strand = {}
         stratifier_by_strand = {}
         detailed_by_strand = {}
+        annotated_genes_by_strand = {}
         for use_strand in (True, False):
-            exon_result = self.evaluator.evaluate_gff_exon(
+            raw_exon_result = self.evaluator.evaluate_gff_exon(
                 pred_gff=pred_gff,
                 true_gff=self._ground_truth_input,
                 k_values=DEFAULT_K_VALUES,
                 use_strand=use_strand,
-                gene_biotypes=EXON_GENE_BIOTYPES,
                 transcript_types=EXON_TRANSCRIPT_TYPES,
             )
-            cds_result = self.evaluator.evaluate_gff_cds(
+            raw_cds_result = self.evaluator.evaluate_gff_cds(
                 pred_gff=pred_gff,
                 true_gff=self._ground_truth_input,
                 k_values=DEFAULT_K_VALUES,
                 use_strand=use_strand,
-                gene_biotypes=CDS_GENE_BIOTYPES,
                 transcript_types=CDS_TRANSCRIPT_TYPES,
             )
-            exon_result = self._compact_branch_result(exon_result)
-            cds_result = self._compact_branch_result(cds_result)
             exon_stratifier = self.evaluator.build_stratifier(
-                branch_result=exon_result,
+                branch_result=raw_exon_result,
                 pred_gff=pred_gff,
                 true_gff=self._ground_truth_input,
                 use_strand=use_strand,
-                gene_biotypes=EXON_GENE_BIOTYPES,
                 transcript_types=EXON_TRANSCRIPT_TYPES,
             )
             cds_stratifier = self.evaluator.build_stratifier(
-                branch_result=cds_result,
+                branch_result=raw_cds_result,
                 pred_gff=pred_gff,
                 true_gff=self._ground_truth_input,
                 use_strand=use_strand,
-                gene_biotypes=CDS_GENE_BIOTYPES,
                 transcript_types=CDS_TRANSCRIPT_TYPES,
             )
             exon_detailed = self.evaluator.build_detailed_info(
-                branch_result=exon_result,
+                branch_result=raw_exon_result,
                 pred_gff=pred_gff,
                 true_gff=self._ground_truth_input,
                 use_strand=use_strand,
-                gene_biotypes=EXON_GENE_BIOTYPES,
                 transcript_types=EXON_TRANSCRIPT_TYPES,
             )
             cds_detailed = self.evaluator.build_detailed_info(
-                branch_result=cds_result,
+                branch_result=raw_cds_result,
                 pred_gff=pred_gff,
                 true_gff=self._ground_truth_input,
                 use_strand=use_strand,
-                gene_biotypes=CDS_GENE_BIOTYPES,
                 transcript_types=CDS_TRANSCRIPT_TYPES,
             )
+            exon_detailed = self.evaluator.build_annotated_transcripts_detailed(
+                exon_detailed=exon_detailed,
+                cds_detailed=cds_detailed,
+                transcript_types=tuple(EXON_TRANSCRIPT_TYPES),
+                mrna_type="mRNA",
+            )
+            annotated_genes = self.evaluator.build_annotated_genes(
+                exon_result=raw_exon_result,
+                cds_result=raw_cds_result,
+                transcript_types=tuple(EXON_TRANSCRIPT_TYPES),
+                mrna_type="mRNA",
+                include_gene_ids=True,
+            )
+            exon_result = self._compact_branch_result(raw_exon_result)
+            cds_result = self._compact_branch_result(raw_cds_result)
+            for k in DEFAULT_K_VALUES:
+                genes_union: set[str] = set()
+                for group in annotated_genes.get("chromosome", {}).values():
+                    genes_union.update(group.get(int(k), {}).get("gene_ids", []))
+                annotated_genes.setdefault("all", {}).setdefault("all", {})[int(k)] = {
+                    "count": len(genes_union),
+                    "gene_ids": sorted(genes_union),
+                }
             branch_results_by_strand[use_strand] = {"exon": exon_result, "cds": cds_result}
             stratifier_by_strand[use_strand] = {"exon": exon_stratifier, "cds": cds_stratifier}
             detailed_by_strand[use_strand] = {"exon": exon_detailed, "cds": cds_detailed}
+            annotated_genes_by_strand[use_strand] = annotated_genes
 
         prediction_index = self._build_prediction_index(pred_gff)
         return ModelBundle(
@@ -592,6 +630,7 @@ class LeaderboardService:
             branch_results_by_strand=branch_results_by_strand,
             stratifier_by_strand=stratifier_by_strand,
             detailed_by_strand=detailed_by_strand,
+            annotated_genes_by_strand=annotated_genes_by_strand,
             prediction_index=prediction_index,
             source_file=source_file,
         )
@@ -606,22 +645,102 @@ class LeaderboardService:
                 payload.get(level_name, {}).pop("matched_pairs", None)
         return compact
 
+    def _normalize_prediction_gff_for_evaluator(self, pred_df: pd.DataFrame) -> pd.DataFrame:
+        if pred_df.empty:
+            return pred_df
+        df = pred_df.copy().reset_index(drop=True)
+        parsed = self.evaluator._read_gff(df)
+        allowed_types = {"mrna", "lnc_rna"}
+
+        def parent_candidates(row: object) -> list[str]:
+            values: list[str] = []
+            for attr_name in ("Parent", "transcript_id"):
+                value = getattr(row, attr_name, None)
+                if value is None or self.evaluator._is_missing_value(value):
+                    continue
+                for part in str(value).split(","):
+                    part = part.strip()
+                    if part:
+                        values.append(part)
+            seen = set()
+            output: list[str] = []
+            for value in values:
+                if value not in seen:
+                    seen.add(value)
+                    output.append(value)
+            return output
+
+        cds_parent_ids: set[str] = set()
+        part_rows = parsed[parsed["type_lower"].isin(self.evaluator.PART_TYPES)].copy()
+        for row in part_rows.itertuples(index=False):
+            if str(row.type_lower) == "cds":
+                cds_parent_ids.update(parent_candidates(row))
+
+        transcript_mask = parsed["type_lower"].isin(self.evaluator.TRANSCRIPT_TYPES)
+        existing_tx_ids: set[str] = set()
+        for idx, row in parsed.loc[transcript_mask].iterrows():
+            tx_id = row.get("ID") or row.get("transcript_id") or f"pred_tx_{idx}"
+            tx_id = str(tx_id)
+            existing_tx_ids.add(tx_id)
+            canonical = self.evaluator._canonical_transcript_type(row.get("type_lower", ""))
+            if canonical not in allowed_types:
+                df.at[idx, "type"] = "mRNA" if tx_id in cds_parent_ids else "lnc_RNA"
+
+        normalized_types = self.evaluator._normalize_transcript_type_filter(EXON_TRANSCRIPT_TYPES)
+        try:
+            parsed_after = self.evaluator._read_gff(df)
+            self.evaluator._extract_pred_transcript_rows(parsed_after, transcript_types=normalized_types)
+            return df
+        except ValueError:
+            pass
+
+        grouped_parts: dict[str, list[object]] = {}
+        for row in part_rows.itertuples(index=False):
+            for parent_id in parent_candidates(row):
+                grouped_parts.setdefault(parent_id, []).append(row)
+
+        synthetic_rows: list[dict[str, object]] = []
+        for tx_id, rows in grouped_parts.items():
+            if tx_id in existing_tx_ids or not rows:
+                continue
+            starts = [int(row.start) for row in rows]
+            ends = [int(row.end) for row in rows]
+            first = rows[0]
+            has_cds = any(str(row.type_lower) == "cds" for row in rows)
+            tx_type = "mRNA" if has_cds else "lnc_RNA"
+            synthetic_rows.append(
+                {
+                    "seqid": str(first.seqid),
+                    "source": "service_normalized",
+                    "type": tx_type,
+                    "start": min(starts),
+                    "end": max(ends),
+                    "score": ".",
+                    "strand": str(first.strand),
+                    "phase": ".",
+                    "attributes": f"ID={tx_id};transcript_id={tx_id}",
+                }
+            )
+        if synthetic_rows:
+            df = pd.concat([pd.DataFrame(synthetic_rows), df], ignore_index=True)
+
+        parsed_final = self.evaluator._read_gff(df)
+        self.evaluator._extract_pred_transcript_rows(parsed_final, transcript_types=normalized_types)
+        return df
+
     # ------------------------------------------------------------------
     # Ground truth and prediction indices
     # ------------------------------------------------------------------
 
     def _build_ground_truth_index(
         self,
-        gene_biotypes: Iterable[str],
         transcript_types: Iterable[str],
         use_strand: bool,
     ) -> dict[str, object]:
         gt_df = self.evaluator._read_gff(self._ground_truth_input)
-        normalized_gene_biotypes = self.evaluator._normalize_string_filter(gene_biotypes)
-        normalized_transcript_types = self.evaluator._normalize_string_filter(transcript_types)
+        normalized_transcript_types = self.evaluator._normalize_transcript_type_filter(transcript_types)
         true_rows = self.evaluator._extract_true_transcript_rows(
             gt_df,
-            gene_biotypes=normalized_gene_biotypes,
             transcript_types=normalized_transcript_types,
         )
         true_tx = self.evaluator._true_rows_to_transcripts(true_rows, use_strand=use_strand)
@@ -690,7 +809,6 @@ class LeaderboardService:
             pred_gff=pred_gff,
             true_gff=self._ground_truth_input,
             k_values=[0],
-            gene_biotypes=EXON_GENE_BIOTYPES,
             transcript_types=EXON_TRANSCRIPT_TYPES,
             use_strand=USE_STRAND,
         )
@@ -726,6 +844,7 @@ class LeaderboardService:
             "temporary": bundle.temporary,
             "source_file": bundle.source_file,
             "metrics_at_default_k": metrics_at_default_k,
+            "annotated_genes": bundle.annotated_genes_by_strand[bool(use_strand)],
             "curves": curves,
         }
 
@@ -750,6 +869,7 @@ class LeaderboardService:
             "part_precision": part_payload["precision"],
             "part_recall": part_payload["recall"],
             "part_f1": part_payload["f1"],
+            "annotated_genes": bundle.annotated_genes_by_strand[bool(use_strand)].get("all", {}).get("all", {}).get(int(k), {}).get("count", 0),
             "interval_counts": interval_payload["precision_counts"] | interval_payload["recall_counts"],
             "segmentation_counts": segmentation_payload["precision_counts"] | segmentation_payload["recall_counts"],
             "part_counts": part_payload["precision_counts"] | part_payload["recall_counts"],
@@ -939,4 +1059,11 @@ class LeaderboardService:
         with self._lock:
             for key, value in kwargs.items():
                 setattr(self._state, key, value)
+            message = kwargs.get("message")
+            error = kwargs.get("error")
+            if isinstance(message, str) and message.strip():
+                self._state.debug_log.append(f"[{time.strftime('%H:%M:%S')}] {message.strip()}")
+            if isinstance(error, str) and error.strip():
+                self._state.debug_log.append(f"[{time.strftime('%H:%M:%S')}] ERROR: {error.strip()}")
+            self._state.debug_log = self._state.debug_log[-200:]
             self._state.upload_queue_length = self._upload_queue.qsize()
