@@ -23,7 +23,7 @@ export default function App() {
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="xl" sx={{ py: 4 }}>
+      <Container maxWidth="xl" sx={{ py: 2.6 }}>
         <Stack spacing={2.1}>
           <Stack direction={{ xs: "column", md: "row" }} spacing={1.2}>
             <Button
