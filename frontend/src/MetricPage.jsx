@@ -261,7 +261,7 @@ const METRIC_DESCRIPTION_HTML = String.raw`
     how different transcript classes should be judged. The motivation is that mRNA and lncRNA annotations have
     different biological requirements: mRNA transcripts must be evaluated using both their transcribed exon structure
     and their coding sequence structure, while lncRNA transcripts have no CDS and are therefore evaluated through exon
-    structure only. For mRNA genes at a specified value of <strong>k</strong>, the metric is implemented as the
+    structure only. For mRNA genes at a specified value of <em>k</em>, the metric is implemented as the
     intersection of genes recovered at the exon segmentation level and genes recovered at the CDS segmentation level,
     so a gene is counted only when both structural requirements are satisfied.
   </p>
