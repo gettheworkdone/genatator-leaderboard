@@ -16,6 +16,31 @@ import CalculateIcon from "@mui/icons-material/Calculate";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+
+const METRIC_DESCRIPTION_HTML = String.raw`
+<section id="metric-description">
+  <p>
+    This metric evaluates biologically meaningful transcript recovery for annotation models. It reports exon and CDS
+    branch results across boundary tolerance values <strong>k</strong>, so you can compare both boundary sensitivity
+    and internal structure recovery.
+  </p>
+  <p>
+    At each <strong>k</strong>, interval-level metrics check whether predicted and reference transcript boundaries
+    match within tolerance. Segmentation-level metrics add a stricter structural requirement (exon chain in the exon
+    branch, CDS chain in the CDS branch). Part-level metrics summarize exact interval matches at exon/CDS part level.
+  </p>
+  <p>
+    Precision is computed over predicted transcripts, while recall is computed over reference genes. This avoids
+    ambiguity when multiple isoforms share the same outer boundaries. Multi-isoform recovery (MI) indicates recovery
+    of genes with multiple distinct isoforms.
+  </p>
+  <p>
+    The metric also reports <strong>Annotated genes</strong>, combining branch rules into one biologically meaningful
+    gene-level view: mRNA recovery requires compatible exon and CDS segmentation support, while lnc_RNA recovery is
+    evaluated by exon segmentation.
+  </p>
+</section>
+`;
 const EVALUATE_SNIPPET = `# How to use this metric with Hugging Face Evaluate
 #
 # This metric supports a Python API through Hugging Face Evaluate.
