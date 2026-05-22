@@ -816,8 +816,8 @@ export default function LeaderboardPanel() {
             overflowY: "visible",
             whiteSpace: "nowrap",
             justifyContent: "center",
-            pt: 0.5,
-            pb: 0.5,
+            pt: 1.0,
+            pb: 1.0,
             px: 1.2,
           }}
         >
