@@ -793,9 +793,9 @@ export default function LeaderboardPanel() {
     <Stack spacing={0}>
       <Paper
         sx={{
-          px: { xs: 2.2, md: 2.6 },
-          pt: { xs: 0.6, md: 0.8 },
-          pb: { xs: 0.6, md: 0.8 },
+          px: { xs: 4.4, md: 5.2 },
+          pt: { xs: 0.4, md: 0.5 },
+          pb: { xs: 0.4, md: 0.5 },
           order: -1,
           mt: -1.1,
           mb: 2.0,
@@ -816,8 +816,9 @@ export default function LeaderboardPanel() {
             overflowY: "visible",
             whiteSpace: "nowrap",
             justifyContent: "center",
-            py: 0.8,
-            px: 0.8,
+            pt: 0.5,
+            pb: 0.5,
+            px: 1.2,
           }}
         >
           {[
@@ -841,7 +842,7 @@ export default function LeaderboardPanel() {
                 borderRadius: "999px",
                 textTransform: "none",
                 boxShadow: "0 1px 2px rgba(15, 23, 42, 0.12)",
-                my: 1.0,
+                my: 0.6,
                 px: 1.6,
                 "&:hover": { backgroundColor: "#c7ecdf" },
               }}
