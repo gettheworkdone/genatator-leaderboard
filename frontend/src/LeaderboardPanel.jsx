@@ -798,7 +798,7 @@ export default function LeaderboardPanel() {
           pb: { xs: 0.6, md: 0.8 },
           order: -1,
           mt: -1.1,
-          mb: 2.4,
+          mb: 2.0,
           position: "sticky",
           top: 74,
           zIndex: 20,
@@ -987,11 +987,7 @@ export default function LeaderboardPanel() {
       <Paper className="glass-card" id="tldr" sx={{ p: { xs: 2.2, md: 3 }, order: 0, mt: 0, scrollMarginTop: "132px" }}>
         <Stack spacing={1.4}>
           <SectionTitle title="TLDR" />
-          <Typography color="text.secondary" sx={{ fontSize: "0.92rem", lineHeight: 1.55, fontWeight: 700 }}>
-            This leaderboard evaluates gene annotation models against human reference annotation. For protein-coding genes performance, sort by F1 with seg. on CDS. For all genes, including lncRNA, sort by F1 with seg. on exons. Current leaders: GENATATOR for all genes and Tiberius for protein-coding genes.
-            <br />
-            To submit your model jump <a href={overview?.source_repository_url || "https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git"} target="_blank" rel="noreferrer">here</a>
-          </Typography>
+          <Typography color="text.secondary" sx={{ fontSize: "0.92rem", lineHeight: 1.55, fontWeight: 700 }}>This leaderboard evaluates gene annotation models against human reference annotation. For protein-coding genes performance, sort by F1 with seg. on CDS. For all genes, including lncRNA, sort by F1 with seg. on exons. Current leaders: GENATATOR for all genes and Tiberius for protein-coding genes. To submit your model jump https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git</Typography>
                   </Stack>
       </Paper>
 
