@@ -246,43 +246,7 @@ function SectionTitle({ icon = null, title, subtitle = null }) {
 }
 
 function PythonSnippet({ code }) {
-  const KEYWORDS = new Set([
-    "import",
-    "from",
-    "as",
-    "True",
-    "False",
-    "None",
-    "for",
-    "in",
-    "if",
-    "else",
-    "print",
-  ]);
-  return (
-    <>
-      {code.split("\n").map((line, lineIdx) => (
-        <React.Fragment key={`line-${lineIdx}`}>
-          {line.split(/(\s+|"[^"]*"|'[^']*'|#.*$|\b[A-Za-z_][A-Za-z0-9_]*\b|\d+)/g).map((token, tokenIdx) => {
-            if (!token) {
-              return null;
-            }
-            let className = "";
-            if (token.startsWith("#")) className = "py-comment";
-            else if (/^"[^"]*"|'[^']*'$/.test(token)) className = "py-string";
-            else if (/^\d+$/.test(token)) className = "py-number";
-            else if (KEYWORDS.has(token)) className = "py-keyword";
-            return (
-              <span className={className} key={`line-${lineIdx}-token-${tokenIdx}`}>
-                {token}
-              </span>
-            );
-          })}
-          {lineIdx < code.split("\n").length - 1 ? "\n" : null}
-        </React.Fragment>
-      ))}
-    </>
-  );
+  return <>{code}</>;
 }
 
 function CodePanel({ children }) {
