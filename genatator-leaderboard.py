@@ -71,7 +71,9 @@ class GenatatorLeaderboardMetric(evaluate.Metric):
 
         evaluator = GeneLevelEvaluator()
         k_values = k_values or list(range(0, 501))
-        gene_biotypes = gene_biotypes or ["protein_coding", "lncRNA"]
+        # Backward compatibility: keep argument accepted, but current evaluator API
+        # is transcript-type based and does not accept gene_biotypes.
+        _ = gene_biotypes
         transcript_types = transcript_types or ["mRNA", "lnc_RNA"]
         pred_df = gff_text_to_dataframe(self._resolve_gff_source(pred_gff))
         true_df = gff_text_to_dataframe(self._resolve_gff_source(true_gff))
@@ -81,7 +83,6 @@ class GenatatorLeaderboardMetric(evaluate.Metric):
             true_gff=true_df,
             k_values=k_values,
             use_strand=use_strand,
-            gene_biotypes=gene_biotypes,
             transcript_types=transcript_types,
         )
         cds = evaluator.evaluate_gff_cds(
@@ -89,19 +90,32 @@ class GenatatorLeaderboardMetric(evaluate.Metric):
             true_gff=true_df,
             k_values=k_values,
             use_strand=use_strand,
-            gene_biotypes=["protein_coding"],
             transcript_types=["mRNA"],
+        )
+        annotated_genes = evaluator.build_annotated_genes(
+            exon_result=exon,
+            cds_result=cds,
+            transcript_types=transcript_types,
+        )
+        exon_detailed = evaluator.build_detailed_info(exon, pred_df, true_df, use_strand, transcript_types)
+        cds_detailed = evaluator.build_detailed_info(cds, pred_df, true_df, use_strand, ["mRNA"])
+        annotated_transcripts = evaluator.build_annotated_transcripts_detailed(
+            exon_detailed=exon_detailed,
+            cds_detailed=cds_detailed,
+            transcript_types=transcript_types,
         )
         return {
             "k_values": k_values,
             "exon": exon,
             "cds": cds,
             "stratifier": {
-                "exon": evaluator.build_stratifier(exon, pred_df, true_df, use_strand, gene_biotypes, transcript_types),
-                "cds": evaluator.build_stratifier(cds, pred_df, true_df, use_strand, ["protein_coding"], ["mRNA"]),
+                "exon": evaluator.build_stratifier(exon, pred_df, true_df, use_strand, transcript_types),
+                "cds": evaluator.build_stratifier(cds, pred_df, true_df, use_strand, ["mRNA"]),
             },
             "detailed": {
-                "exon": evaluator.build_detailed_info(exon, pred_df, true_df, use_strand, gene_biotypes, transcript_types),
-                "cds": evaluator.build_detailed_info(cds, pred_df, true_df, use_strand, ["protein_coding"], ["mRNA"]),
+                "exon": exon_detailed,
+                "cds": cds_detailed,
+                "annotated_transcripts": annotated_transcripts,
             },
+            "annotated_genes": annotated_genes,
         }
