@@ -793,7 +793,9 @@ export default function LeaderboardPanel() {
     <Stack spacing={0}>
       <Paper
         sx={{
-          p: { xs: 2.6, md: 2.8 },
+          px: { xs: 2.2, md: 2.6 },
+          pt: { xs: 0.4, md: 0.6 },
+          pb: { xs: 0.6, md: 0.8 },
           order: -1,
           mt: -1.1,
           mb: 2.4,
@@ -839,7 +841,7 @@ export default function LeaderboardPanel() {
                 borderRadius: "999px",
                 textTransform: "none",
                 boxShadow: "0 1px 2px rgba(15, 23, 42, 0.12)",
-                my: 0.5,
+                my: 0.2,
                 px: 1.6,
                 "&:hover": { backgroundColor: "#c7ecdf" },
               }}
