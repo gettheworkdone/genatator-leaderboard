@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import {
+  Alert,
   AppBar,
   Box,
   Button,
@@ -11,6 +12,34 @@ import {
 
 import MetricPage from "./MetricPage";
 import LeaderboardPanel from "./LeaderboardPanel";
+
+class PageErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, message: "" };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, message: error?.message || "Unknown rendering error" };
+  }
+
+  componentDidCatch(error) {
+    // Keep a console trail for browser debugging in production deployments.
+    // eslint-disable-next-line no-console
+    console.error("Page rendering error:", error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Alert severity="error" sx={{ mt: 1 }}>
+          Failed to render this page section: {this.state.message}
+        </Alert>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function App() {
   const [pageMode, setPageMode] = useState("leaderboard");
@@ -38,11 +67,13 @@ export default function App() {
               size="large"
               onClick={() => setPageMode("metric")}
             >
-              Metrics description
+              Metric description
             </Button>
           </Stack>
 
-          {pageMode === "metric" ? <MetricPage /> : <LeaderboardPanel />}
+          <PageErrorBoundary key={pageMode}>
+            {pageMode === "metric" ? <MetricPage /> : <LeaderboardPanel />}
+          </PageErrorBoundary>
         </Stack>
       </Container>
     </Box>
