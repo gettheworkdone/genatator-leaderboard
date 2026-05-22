@@ -37,19 +37,20 @@ const EVALUATE_SNIPPET = `# How to use this metric with Hugging Face Evaluate
 #   use_strand: whether strand must match between prediction and reference.
 #               Use True for strand-aware evaluation.
 #               Use False for models that do not report strand information.
-#   gene_biotypes: optional filter for gene biotypes.
 #   transcript_types: optional filter for transcript types.
+#                     For example, ["mRNA"] or ["mRNA", "lnc_RNA"].
 #
-# By default, the leaderboard uses:
+# Leaderboard-style setup:
 #   use_strand=True
-#   exon branch: mRNA and lnc_RNA transcripts from protein_coding and lncRNA genes
-#   CDS branch: mRNA transcripts from protein_coding genes
+#   exon branch: mRNA and lnc_RNA transcripts
+#   CDS branch: mRNA transcripts with annotated CDS
 #
 # The result contains:
-#   result["exon"]       -> exon-branch metrics by k
-#   result["cds"]        -> CDS-branch metrics by k
-#   result["stratifier"] -> grouped metrics by strand, chromosome, and transcript type
-#   result["detailed"]   -> transcript-level matching information
+#   result["exon"]            -> exon-branch metrics by k
+#   result["cds"]             -> CDS-branch metrics by k
+#   result["stratifier"]      -> grouped metrics by strand, chromosome, and transcript type
+#   result["detailed"]        -> transcript-level matching information
+#   result["annotated_genes"] -> annotated-gene counts by strand, chromosome, and transcript type
 
 import evaluate
 
@@ -62,8 +63,7 @@ true_gff_path = "/tmp/reference.gff"
 # ---------------------------------------------------------------------
 # 1) Leaderboard-style evaluation
 # ---------------------------------------------------------------------
-# This is the standard setting used for the leaderboard.
-# It evaluates both exon and CDS branches and returns all outputs.
+# This evaluates both exon and CDS branches and returns all output blocks.
 
 result = metric.compute(
     pred_gff=pred_gff_path,
@@ -72,25 +72,65 @@ result = metric.compute(
     use_strand=True,
 )
 
-# Main exon-branch scores at k = 250
-print(result["exon"][250]["interval-level"]["f1"])
-print(result["exon"][250]["segmentation-level"]["f1"])
-print(result["exon"][250]["interval-level"]["mi"])
-print(result["exon"][250]["segmentation-level"]["mi"])
-
-# Main CDS-branch scores at k = 250
-print(result["cds"][250]["interval-level"]["f1"])
-print(result["cds"][250]["segmentation-level"]["f1"])
-print(result["cds"][250]["interval-level"]["mi"])
-print(result["cds"][250]["segmentation-level"]["mi"])
-
-# Exact part-level scores
-print(result["exon"][250]["part-level"]["f1"])
-print(result["cds"][250]["part-level"]["f1"])
+k = 250
 
 
 # ---------------------------------------------------------------------
-# 2) Evaluation without strand matching
+# 2) Main exon-branch scores
+# ---------------------------------------------------------------------
+
+print("Exon interval F1:", result["exon"][k]["interval-level"]["f1"])
+print("Exon segmentation F1:", result["exon"][k]["segmentation-level"]["f1"])
+print("Exon interval MI:", result["exon"][k]["interval-level"]["mi"])
+print("Exon segmentation MI:", result["exon"][k]["segmentation-level"]["mi"])
+print("Exon exact part F1:", result["exon"][k]["part-level"]["f1"])
+
+
+# ---------------------------------------------------------------------
+# 3) Main CDS-branch scores
+# ---------------------------------------------------------------------
+
+print("CDS interval F1:", result["cds"][k]["interval-level"]["f1"])
+print("CDS segmentation F1:", result["cds"][k]["segmentation-level"]["f1"])
+print("CDS interval MI:", result["cds"][k]["interval-level"]["mi"])
+print("CDS segmentation MI:", result["cds"][k]["segmentation-level"]["mi"])
+print("CDS exact part F1:", result["cds"][k]["part-level"]["f1"])
+
+
+# ---------------------------------------------------------------------
+# 4) Annotated genes
+# ---------------------------------------------------------------------
+# Annotated genes are counted after final transcript recovery rules:
+#   - mRNA genes require the same prediction to recover both exon and CDS
+#     segmentation for the same reference transcript.
+#   - lnc_RNA and other non-mRNA transcript types use exon segmentation.
+
+annotated_genes = result["annotated_genes"]
+
+print("Annotated-gene grouping blocks:", annotated_genes.keys())
+print("Annotated transcript-type groups:", annotated_genes["transcript_type"].keys())
+
+print("Annotated mRNA genes at k = 250:")
+print(annotated_genes["transcript_type"]["mrna"][k]["count"])
+
+print("Annotated lnc_RNA genes at k = 250:")
+print(annotated_genes["transcript_type"]["lnc_rna"][k]["count"])
+
+if "+" in annotated_genes["strand"]:
+    print("Annotated genes on + strand at k = 250:")
+    print(annotated_genes["strand"]["+"][k]["count"])
+
+if "-" in annotated_genes["strand"]:
+    print("Annotated genes on - strand at k = 250:")
+    print(annotated_genes["strand"]["-"][k]["count"])
+
+if "NC_060944.1" in annotated_genes["chromosome"]:
+    print("Annotated genes on chromosome NC_060944.1 at k = 250:")
+    print(annotated_genes["chromosome"]["NC_060944.1"][k]["count"])
+
+
+# ---------------------------------------------------------------------
+# 5) Evaluation without strand matching
 # ---------------------------------------------------------------------
 # Use this for models that do not provide strand information,
 # for example SegmentNT-like or NTv3-like outputs.
@@ -102,213 +142,96 @@ result_no_strand = metric.compute(
     use_strand=False,
 )
 
+print("Exon interval F1 without strand at k = 250:")
 print(result_no_strand["exon"][250]["interval-level"]["f1"])
 
 
 # ---------------------------------------------------------------------
-# 3) Custom filtering
+# 6) Custom transcript-type filtering
 # ---------------------------------------------------------------------
-# You can restrict evaluation to selected gene biotypes and transcript types.
-# For example, this focuses on mRNA transcripts from protein-coding genes.
+# Use transcript_types to restrict the evaluation to selected transcript classes.
 
 result_mrna_only = metric.compute(
     pred_gff=pred_gff_path,
     true_gff=true_gff_path,
     k_values=[250],
     use_strand=True,
-    gene_biotypes=["protein_coding"],
     transcript_types=["mRNA"],
 )
 
+print("mRNA-only exon segmentation F1:")
 print(result_mrna_only["exon"][250]["segmentation-level"]["f1"])
+
+print("mRNA-only CDS segmentation F1:")
 print(result_mrna_only["cds"][250]["segmentation-level"]["f1"])
 
 
 # ---------------------------------------------------------------------
-# 4) Stratifier output
+# 7) Stratifier output
 # ---------------------------------------------------------------------
-# Stratifier returns the same metrics, but grouped by biological rules:
+# Stratifier returns the same branch-specific metrics grouped by:
 #   strand
 #   chromosome
 #   transcript_type
 
+print("Exon metrics for mRNA transcripts at k = 250:")
 print(result["stratifier"]["exon"]["transcript_type"]["mrna"][250])
-print(result["stratifier"]["exon"]["strand"]["+"][250])
-print(result["stratifier"]["cds"]["chromosome"]["NC_060944.1"][250])
+
+if "+" in result["stratifier"]["exon"]["strand"]:
+    print("Exon metrics for + strand at k = 250:")
+    print(result["stratifier"]["exon"]["strand"]["+"][250])
+
+if "NC_060944.1" in result["stratifier"]["cds"]["chromosome"]:
+    print("CDS metrics for chromosome NC_060944.1 at k = 250:")
+    print(result["stratifier"]["cds"]["chromosome"]["NC_060944.1"][250])
 
 
 # ---------------------------------------------------------------------
-# 5) Detailed transcript-level output
+# 8) Detailed transcript-level output
 # ---------------------------------------------------------------------
-# Detailed output lets you inspect which predictions matched
-# each ground-truth transcript and at which minimal k.
+# Detailed output shows which predictions matched each ground-truth transcript
+# and the minimum k value required for each match.
 
 detailed_exon = result["detailed"]["exon"]
+detailed_cds = result["detailed"]["cds"]
 
+print("Number of exon-detailed transcripts:")
 print(len(detailed_exon))
+
+print("First three exon transcript IDs:")
 print(list(detailed_exon.keys())[:3])
 
-first_tx_id = list(detailed_exon.keys())[0]
-print(detailed_exon[first_tx_id])
+first_exon_tx_id = list(detailed_exon.keys())[0]
+print("First exon-detailed transcript record:")
+print(detailed_exon[first_exon_tx_id])
 
-# Example fields:
-#   chromosome
-#   start
-#   end
-#   strand
-#   gene_id
-#   transcript_type
-#   interval-level["predictions"]
-#   segmentation-level["predictions"]`
+print("Number of CDS-detailed transcripts:")
+print(len(detailed_cds))
 
-const METRIC_DESCRIPTION_HTML = String.raw`
-<section id="metric-description">
-  <p>
-    This metric is designed for genome annotation cases where a prediction can look locally accurate while still being
-    biologically wrong. A small shift at a transcript, exon, or coding boundary may preserve much of the basewise signal,
-    but it can still change splice structure, disrupt the coding frame, or alter the translated product. For that reason,
-    the metric does not rely on per-nucleotide comparison. Instead, it was designed to account for the main biological
-    constraints of gene annotation. Splice-site boundaries are assessed strictly, while the tolerance parameter \(k\) is
-    introduced to reflect the fact that transcription start and end positions can vary in real cells.
-  </p>
+if detailed_cds:
+    first_cds_tx_id = list(detailed_cds.keys())[0]
+    print("First CDS-detailed transcript record:")
+    print(detailed_cds[first_cds_tx_id])
 
-  <p>
-    The metric has two branches. The <strong>exon branch</strong> evaluates transcript structure for mRNA and lncRNA genes.
-    For mRNA transcripts, this includes both UTR exons and coding exons. The <strong>CDS branch</strong> evaluates the
-    coding sequence structure of mRNA transcripts. In simple terms, the exon branch asks whether the model recovers the
-    transcribed exon structure, while the CDS branch asks whether it recovers the protein-coding structure.
-  </p>
 
-  <p>
-    Let \(k \ge 0\) be the allowed boundary deviation measured in base pairs. In this context, transcript start means the
-    first transcribed nucleotide, and transcript end means the last transcribed nucleotide. These positions are not always
-    sharply defined in biology, because transcription initiation and termination can vary across molecules. This is different
-    from splice sites, which correspond to much more precise exon-intron boundaries. Therefore, the metric is evaluated at
-    a user-specified value of \(k\), where smaller values require stricter boundary agreement and larger values allow more
-    tolerant matching.
-  </p>
+# ---------------------------------------------------------------------
+# 9) Annotated transcript details
+# ---------------------------------------------------------------------
+# Annotated transcript details identify prediction IDs that satisfy the
+# final transcript annotation rule for each reference transcript.
 
-  <p>
-    At a given value of \(k\), the metric first computes an <strong>interval-level</strong> score. In the exon branch,
-    this is similar to comparing BED-like intervals that contain only transcript starts and ends. It asks whether a predicted
-    transcript interval falls close enough to a reference transcript interval, without checking the internal exon structure.
-    In the CDS branch, the same idea is applied to the coding span of an mRNA transcript. A predicted interval is considered
-    matched only if its relevant boundaries satisfy the chosen tolerance. Therefore, even if a prediction covers almost the
-    entire reference transcript, it is still counted as unmatched if one of its relevant boundaries lies outside the specified
-    \(k\) by even one additional nucleotide.
-  </p>
+annotated_transcripts = result["detailed"].get("annotated_transcripts", {})
 
-  <p>
-    Let \(TP_{\mathrm{int}}(k)\) be the number of matched predicted <strong>transcripts</strong>. Let
-    \(FP_{\mathrm{int}}(k)\) be the number of predicted <strong>transcripts</strong> that are not matched. Let
-    \(TP_{\mathrm{gene}}(k)\) be the number of reference <strong>genes</strong> for which at least one transcript is matched.
-    Let \(FN_{\mathrm{gene}}(k)\) be the number of reference <strong>genes</strong> for which no transcript is matched.
-    Then
-  </p>
+if annotated_transcripts:
+    print("Number of annotated transcript-detail records:")
+    print(len(annotated_transcripts))
 
-  <div class="equation">
-    \[
-      \mathrm{Precision}(k)=
-      \frac{TP_{\mathrm{int}}(k)}
-      {TP_{\mathrm{int}}(k)+FP_{\mathrm{int}}(k)},
-      \qquad
-      \mathrm{Recall}(k)=
-      \frac{TP_{\mathrm{gene}}(k)}
-      {TP_{\mathrm{gene}}(k)+FN_{\mathrm{gene}}(k)},
-    \]
-    \[
-      F_{1}(k)=
-      \frac{2\,\mathrm{Precision}(k)\,\mathrm{Recall}(k)}
-      {\mathrm{Precision}(k)+\mathrm{Recall}(k)}.
-    \]
-  </div>
+    first_annotated_tx_id = list(annotated_transcripts.keys())[0]
+    print("First annotated transcript-detail record:")
+    print(annotated_transcripts[first_annotated_tx_id])
 
-  <p>
-    Precision and recall are intentionally defined over different biological entities. Precision is calculated over predicted
-    <strong>transcripts</strong>, because false positives are naturally defined as predicted transcript objects that fail to
-    match the reference at the chosen \(k\). Recall, however, is calculated over reference <strong>genes</strong>, not over
-    reference transcripts. This is necessary because multiple annotated isoforms of the same gene can have identical transcript
-    start and end coordinates. At the interval level, where internal segmentation is not considered, such isoforms cannot be
-    distinguished by their outer interval alone. Therefore, a transcript-level false negative would be ambiguous. The metric
-    could not determine which isoform with the same outer coordinates was missed. Gene-level recall avoids this ambiguity.
-    A reference gene is counted as recovered when at least one of its transcripts is matched.
-  </p>
-
-  <p>
-    This convention also gives a consistent interpretation to models that predict several alternative transcripts with the
-    same start and end positions. At the interval level, those predictions are indistinguishable by boundaries alone. Since
-    \(TP_{\mathrm{int}}(k)\) is counted over predicted transcript objects, each predicted transcript whose interval matches
-    the reference can contribute to the number of matched predictions. The interval-level score therefore evaluates whether
-    predicted transcript intervals are supported, but it does not claim to resolve alternative splicing when isoforms share
-    the same outer coordinates.
-  </p>
-
-  <p>
-    The next step is <strong>segmentation-aware evaluation</strong>. Interval matching alone is not enough, because a model
-    may find the right genomic region while still predicting the wrong exon chain or CDS. In the exon branch, the
-    prediction must reconstruct the exon structure after allowing tolerance only at the outer transcript boundaries. Internal
-    splice-site boundaries must still be correct. In the CDS branch, the CDS must match exactly, because coding boundary
-    errors can change the encoded protein. This segmentation-aware step makes it possible to distinguish isoforms with the
-    same transcript start and end positions when they differ in internal exon or CDS structure. Importantly, the calculation
-    principle remains the same: precision is still calculated over predicted transcripts, recall is still calculated over
-    reference genes, and the same F1 formula is applied after the structural filter has been added.
-  </p>
-
-  <p>
-    The <strong>Annotated genes</strong> metric summarizes how many reference genes are recovered according to the
-    biologically meaningful annotation rules used by both branches of the evaluation. While the exon and CDS branch
-    metrics are reported separately, this metric combines them into a single gene-level recovery view that reflects
-    how different transcript classes should be judged. The motivation is that mRNA and lncRNA annotations have
-    different biological requirements: mRNA transcripts must be evaluated using both their transcribed exon structure
-    and their coding sequence structure, while lncRNA transcripts have no CDS and are therefore evaluated through exon
-    structure only. For mRNA genes at a specified value of <strong>k</strong>, the metric is implemented as the
-    intersection of genes recovered at the exon segmentation level and genes recovered at the CDS segmentation level,
-    so a gene is counted only when both structural requirements are satisfied.
-  </p>
-
-  <p>
-    The metric also reports <strong>multi-isoform recovery</strong> (MI). MI is calculated only for genes that really have
-    multiple distinct isoforms in the reference annotation. A gene contributes to MI only if the prediction recovers at least
-    two distinct transcript objects that match at least two distinct annotated isoforms of that gene. Therefore, MI without
-    segmentation measures whether multiple isoforms are recovered after interval matching, while MI with segmentation
-    measures whether multiple isoforms are recovered after the structural check as well.
-  </p>
-
-  <p>
-    Finally, the metric reports <strong>exact part-level</strong> scores. For a chosen branch \(B\), let
-    \(S_{\mathrm{pred}}^{B}\) be the set of all unique predicted intervals of that branch pooled across transcripts, and let
-    \(S_{\mathrm{true}}^{B}\) be the corresponding set of unique reference intervals. In the exon branch, these sets contain
-    exon intervals. In the CDS branch, these sets contain CDS intervals. A <em>true positive</em> is a predicted interval in
-    \(S_{\mathrm{pred}}^{B}\) that exactly matches an interval in \(S_{\mathrm{true}}^{B}\). A <em>false positive</em> is a
-    predicted interval with no exact reference match. A <em>false negative</em> is a reference interval that is not recovered
-    by any predicted interval. If \(TP_{\mathrm{part}}^{B}\), \(FP_{\mathrm{part}}^{B}\), and \(FN_{\mathrm{part}}^{B}\)
-    denote these counts, then
-  </p>
-
-  <div class="equation">
-    \[
-      \mathrm{Precision}_{\mathrm{part}}^{B}=
-      \frac{TP_{\mathrm{part}}^{B}}
-      {TP_{\mathrm{part}}^{B}+FP_{\mathrm{part}}^{B}},
-      \qquad
-      \mathrm{Recall}_{\mathrm{part}}^{B}=
-      \frac{TP_{\mathrm{part}}^{B}}
-      {TP_{\mathrm{part}}^{B}+FN_{\mathrm{part}}^{B}},
-    \]
-    \[
-      F_{1,\mathrm{part}}^{B}=
-      \frac{2\,\mathrm{Precision}_{\mathrm{part}}^{B}\,\mathrm{Recall}_{\mathrm{part}}^{B}}
-      {\mathrm{Precision}_{\mathrm{part}}^{B}+\mathrm{Recall}_{\mathrm{part}}^{B}}.
-    \]
-  </div>
-
-  <p>
-    These part-level scores answer a narrower question than transcript-level evaluation. They show whether the model found
-    the correct exon or CDS pieces, even if it failed to assemble those pieces into the correct full transcript. Together,
-    interval-level F1, segmentation-aware F1, MI, and exact part-level scores give a rigorous but readable picture of
-    annotation quality.
-  </p>
-</section>`;
+    print("Predictions that annotate this transcript:")
+    print(annotated_transcripts[first_annotated_tx_id].get("annotated_transcripts", []))`;
 
 function SectionTitle({ icon = null, title, subtitle = null }) {
   return (
@@ -323,43 +246,7 @@ function SectionTitle({ icon = null, title, subtitle = null }) {
 }
 
 function PythonSnippet({ code }) {
-  const KEYWORDS = new Set([
-    "import",
-    "from",
-    "as",
-    "True",
-    "False",
-    "None",
-    "for",
-    "in",
-    "if",
-    "else",
-    "print",
-  ]);
-  return (
-    <>
-      {code.split("\n").map((line, lineIdx) => (
-        <React.Fragment key={`line-${lineIdx}`}>
-          {line.split(/(\s+|"[^"]*"|'[^']*'|#.*$|\b[A-Za-z_][A-Za-z0-9_]*\b|\d+)/g).map((token, tokenIdx) => {
-            if (!token) {
-              return null;
-            }
-            let className = "";
-            if (token.startsWith("#")) className = "py-comment";
-            else if (/^"[^"]*"|'[^']*'$/.test(token)) className = "py-string";
-            else if (/^\d+$/.test(token)) className = "py-number";
-            else if (KEYWORDS.has(token)) className = "py-keyword";
-            return (
-              <span className={className} key={`line-${lineIdx}-token-${tokenIdx}`}>
-                {token}
-              </span>
-            );
-          })}
-          {lineIdx < code.split("\n").length - 1 ? "\n" : null}
-        </React.Fragment>
-      ))}
-    </>
-  );
+  return <>{code}</>;
 }
 
 function CodePanel({ children }) {
@@ -488,7 +375,7 @@ export default function MetricPage() {
     <Stack spacing={3.2}>
       <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 } }}>
         <Stack spacing={2.2}>
-          <SectionTitle title="Metrics description" />
+          <SectionTitle title="Metric description" />
 
           <Box sx={{ position: "relative" }}>
             <Box

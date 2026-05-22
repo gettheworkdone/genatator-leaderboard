@@ -38,7 +38,7 @@ export default function App() {
               size="large"
               onClick={() => setPageMode("metric")}
             >
-              Metrics description
+              Metric description
             </Button>
           </Stack>
 
