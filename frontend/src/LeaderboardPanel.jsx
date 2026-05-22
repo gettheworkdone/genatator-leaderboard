@@ -118,6 +118,18 @@ const LEADERBOARD_DESCRIPTION_HTML = String.raw`
     <strong>MI with seg.</strong> is the multi-isoform count after the same structural check. You can also use
     <strong>Sort rows</strong> to rank models by the metric you care about most.
   </p>
+  <p>
+    The <strong>Annotated genes</strong> metric summarizes how many reference genes are recovered according to the
+    biologically meaningful annotation rules used by both branches of the evaluation. While the exon and CDS branch
+    metrics are reported separately, this metric combines them into a single gene-level recovery view that reflects
+    how different transcript classes should be judged. The motivation is that mRNA and lncRNA annotations have
+    different biological requirements: mRNA transcripts must be evaluated using both their transcribed exon structure
+    and their coding sequence structure, while lncRNA transcripts have no CDS and are therefore evaluated through
+    exon structure only. For mRNA genes at a specified value of <strong>k</strong>, the metric is implemented as the
+    intersection of genes recovered at the exon segmentation level and genes recovered at the CDS segmentation level,
+    so a gene is counted only when both structural requirements are satisfied.
+  </p>
+
 
   <p>
     The <strong>Use strand</strong> option controls whether strand information is used during matching. When it is
@@ -289,6 +301,9 @@ export default function LeaderboardPanel() {
   const [stratifier, setStratifier] = useState(null);
 
   const [detailBranch, setDetailBranch] = useState("exon");
+
+  const highlightedMainSortColumn = useMemo(() => sortMetric, [sortMetric]);
+
   const [geneQuery, setGeneQuery] = useState("");
   const [genePage, setGenePage] = useState(1);
   const [geneList, setGeneList] = useState({ items: [], total: 0, page: 1, page_size: 25 });
@@ -793,9 +808,9 @@ export default function LeaderboardPanel() {
     <Stack spacing={0}>
       <Paper
         sx={{
-          px: { xs: 2.2, md: 2.6 },
-          pt: { xs: 0.6, md: 0.8 },
-          pb: { xs: 0.6, md: 0.8 },
+          px: { xs: 4.4, md: 5.2 },
+          pt: { xs: 0.4, md: 0.5 },
+          pb: { xs: 0.4, md: 0.5 },
           order: -1,
           mt: -1.1,
           mb: 2.0,
@@ -816,8 +831,9 @@ export default function LeaderboardPanel() {
             overflowY: "visible",
             whiteSpace: "nowrap",
             justifyContent: "center",
-            py: 0.8,
-            px: 0.8,
+            pt: 1.0,
+            pb: 1.0,
+            px: 1.2,
           }}
         >
           {[
@@ -1083,14 +1099,14 @@ export default function LeaderboardPanel() {
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell>F1 w/o seg.</TableCell>
-                    <TableCell>MI w/o seg.</TableCell>
-                    <TableCell className="rank-column-highlight">F1 with seg.</TableCell>
-                    <TableCell>MI with seg.</TableCell>
-                    <TableCell>F1 w/o seg.</TableCell>
-                    <TableCell>MI w/o seg.</TableCell>
-                    <TableCell className="rank-column-highlight">F1 with seg.</TableCell>
-                    <TableCell>MI with seg.</TableCell>
+                    <TableCell className={highlightedMainSortColumn === "exon_interval_f1" ? "rank-column-highlight" : undefined}>F1 w/o seg.</TableCell>
+                    <TableCell className={highlightedMainSortColumn === "exon_interval_mi" ? "rank-column-highlight" : undefined}>MI w/o seg.</TableCell>
+                    <TableCell className={highlightedMainSortColumn === "exon_segmentation_f1" ? "rank-column-highlight" : undefined}>F1 with seg.</TableCell>
+                    <TableCell className={highlightedMainSortColumn === "exon_segmentation_mi" ? "rank-column-highlight" : undefined}>MI with seg.</TableCell>
+                    <TableCell className={highlightedMainSortColumn === "cds_interval_f1" ? "rank-column-highlight" : undefined}>F1 w/o seg.</TableCell>
+                    <TableCell className={highlightedMainSortColumn === "cds_interval_mi" ? "rank-column-highlight" : undefined}>MI w/o seg.</TableCell>
+                    <TableCell className={highlightedMainSortColumn === "cds_segmentation_f1" ? "rank-column-highlight" : undefined}>F1 with seg.</TableCell>
+                    <TableCell className={highlightedMainSortColumn === "cds_segmentation_mi" ? "rank-column-highlight" : undefined}>MI with seg.</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1117,6 +1133,7 @@ export default function LeaderboardPanel() {
                       </TableCell>
                       <TableCell sx={{ width: 165, minWidth: 165 }}>{formatScore(row.annotated_genes, 0)}</TableCell>
                       <TableCell
+                        className={highlightedMainSortColumn === "exon_interval_f1" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.exon_interval_f1 !== undefined &&
                           Number(row.exon_interval_f1) === mainColumnHighlights.exon_interval_f1
@@ -1127,6 +1144,7 @@ export default function LeaderboardPanel() {
                         {formatScore(row.exon_interval_f1)}
                       </TableCell>
                       <TableCell
+                        className={highlightedMainSortColumn === "exon_interval_mi" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.exon_interval_mi !== undefined &&
                           Number(row.exon_interval_mi) === mainColumnHighlights.exon_interval_mi
@@ -1137,7 +1155,7 @@ export default function LeaderboardPanel() {
                         {formatScore(row.exon_interval_mi, 0)}
                       </TableCell>
                       <TableCell
-                        className="rank-column-highlight"
+                        className={highlightedMainSortColumn === "exon_segmentation_f1" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.exon_segmentation_f1 !== undefined &&
                           Number(row.exon_segmentation_f1) === mainColumnHighlights.exon_segmentation_f1
@@ -1148,6 +1166,7 @@ export default function LeaderboardPanel() {
                         {formatScore(row.exon_segmentation_f1)}
                       </TableCell>
                       <TableCell
+                        className={highlightedMainSortColumn === "exon_segmentation_mi" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.exon_segmentation_mi !== undefined &&
                           Number(row.exon_segmentation_mi) === mainColumnHighlights.exon_segmentation_mi
@@ -1158,6 +1177,7 @@ export default function LeaderboardPanel() {
                         {formatScore(row.exon_segmentation_mi, 0)}
                       </TableCell>
                       <TableCell
+                        className={highlightedMainSortColumn === "cds_interval_f1" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.cds_interval_f1 !== undefined &&
                           Number(row.cds_interval_f1) === mainColumnHighlights.cds_interval_f1
@@ -1168,6 +1188,7 @@ export default function LeaderboardPanel() {
                         {formatScore(row.cds_interval_f1)}
                       </TableCell>
                       <TableCell
+                        className={highlightedMainSortColumn === "cds_interval_mi" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.cds_interval_mi !== undefined &&
                           Number(row.cds_interval_mi) === mainColumnHighlights.cds_interval_mi
@@ -1178,7 +1199,7 @@ export default function LeaderboardPanel() {
                         {formatScore(row.cds_interval_mi, 0)}
                       </TableCell>
                       <TableCell
-                        className="rank-column-highlight"
+                        className={highlightedMainSortColumn === "cds_segmentation_f1" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.cds_segmentation_f1 !== undefined &&
                           Number(row.cds_segmentation_f1) === mainColumnHighlights.cds_segmentation_f1
@@ -1189,6 +1210,7 @@ export default function LeaderboardPanel() {
                         {formatScore(row.cds_segmentation_f1)}
                       </TableCell>
                       <TableCell
+                        className={highlightedMainSortColumn === "cds_segmentation_mi" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.cds_segmentation_mi !== undefined &&
                           Number(row.cds_segmentation_mi) === mainColumnHighlights.cds_segmentation_mi
