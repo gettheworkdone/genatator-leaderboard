@@ -795,9 +795,10 @@ export default function LeaderboardPanel() {
         sx={{
           p: { xs: 2.6, md: 2.8 },
           order: -1,
-          mt: 0,
+          mt: -1.1,
+          mb: 2.0,
           position: "sticky",
-          top: 64,
+          top: 74,
           zIndex: 20,
           backgroundColor: "transparent !important",
           boxShadow: "none",
@@ -813,7 +814,7 @@ export default function LeaderboardPanel() {
             overflowY: "visible",
             whiteSpace: "nowrap",
             justifyContent: "center",
-            py: 1.2,
+            py: 0.8,
             px: 0.8,
           }}
         >
@@ -833,14 +834,14 @@ export default function LeaderboardPanel() {
               href={`#${id}`}
               variant="contained"
               sx={{
-                backgroundColor: "#ffffff",
+                backgroundColor: "#d9f4ec",
                 color: "primary.main",
                 borderRadius: "999px",
                 textTransform: "none",
                 boxShadow: "0 1px 2px rgba(15, 23, 42, 0.12)",
                 my: 0.5,
                 px: 1.6,
-                "&:hover": { backgroundColor: "#f8fafc" },
+                "&:hover": { backgroundColor: "#c7ecdf" },
               }}
             >
               {label}
@@ -984,11 +985,7 @@ export default function LeaderboardPanel() {
       <Paper className="glass-card" id="tldr" sx={{ p: { xs: 2.2, md: 3 }, order: 0, mt: 0, scrollMarginTop: "132px" }}>
         <Stack spacing={1.4}>
           <SectionTitle title="TLDR" />
-          <Typography color="text.secondary" sx={{ fontSize: "0.92rem", lineHeight: 1.55, fontWeight: 700 }}>
-            This leaderboard evaluates gene annotation models against human reference annotation. For protein-coding genes performance, sort by F1 with seg. on CDS. For all genes, including lncRNA, sort by F1 with seg. on exons. Current leaders: GENATATOR for all genes and Tiberius for protein-coding genes.
-            <br />
-            To submit your model jump <a href={overview?.source_repository_url || "https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git"} target="_blank" rel="noreferrer">here</a>
-          </Typography>
+          <Typography color="text.secondary" sx={{ fontSize: "0.92rem", lineHeight: 1.55, fontWeight: 700 }}>This leaderboard evaluates gene annotation models against human reference annotation. For protein-coding genes performance, sort by F1 with seg. on CDS. For all genes, including lncRNA, sort by F1 with seg. on exons. Current leaders: GENATATOR for all genes and Tiberius for protein-coding genes. To submit your model jump https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git</Typography>
                   </Stack>
       </Paper>
 
@@ -1090,7 +1087,6 @@ export default function LeaderboardPanel() {
                     <TableCell>MI w/o seg.</TableCell>
                     <TableCell className="rank-column-highlight">F1 with seg.</TableCell>
                     <TableCell>MI with seg.</TableCell>
-                    <TableCell>Annotated genes</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1198,7 +1194,6 @@ export default function LeaderboardPanel() {
                       >
                         {formatScore(row.cds_segmentation_mi, 0)}
                       </TableCell>
-                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1331,7 +1326,6 @@ export default function LeaderboardPanel() {
                     <TableCell colSpan={3} align="center">
                       Exact part level
                     </TableCell>
-                    <TableCell rowSpan={2}>Annotated genes</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell>Precision</TableCell>
@@ -1479,7 +1473,6 @@ export default function LeaderboardPanel() {
                       >
                         {formatScore(row.part_f1)}
                       </TableCell>
-                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1559,7 +1552,6 @@ export default function LeaderboardPanel() {
                     <TableCell>Segmentation F1</TableCell>
                     <TableCell>Segmentation MI</TableCell>
                     <TableCell>Exact part F1</TableCell>
-                    <TableCell>Annotated genes</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1572,7 +1564,6 @@ export default function LeaderboardPanel() {
                       <TableCell>{formatScore(row.segmentation_f1)}</TableCell>
                       <TableCell>{formatScore(row.segmentation_mi, 0)}</TableCell>
                       <TableCell>{formatScore(row.part_f1)}</TableCell>
-                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1688,7 +1679,7 @@ export default function LeaderboardPanel() {
                                   <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                                     <Typography fontWeight={760}>{transcript.transcript_id}</Typography>
                                     <Chip size="small" label={transcript.transcript_type} />
-                                    <Chip size="small" color={transcript.is_annotated ? "success" : "default"} label={transcript.is_annotated ? "✅ Complete mRNA annotation" : "❌ Not annotated"} />
+                                    <Chip size="small" color={transcript.is_annotated ? "success" : "default"} label={transcript.is_annotated ? "✅ Complete mRNA annotation" : "❌ No complete mRNA annotations"} />
                                     <Chip size="small" variant="outlined" label={`${transcript.length} nt`} />
                                     <Chip
                                       size="small"
@@ -1744,7 +1735,7 @@ export default function LeaderboardPanel() {
                                             <TableCell>Coordinate</TableCell>
                                             <TableCell>Exon segments</TableCell>
                                             <TableCell>CDS segments</TableCell>
-                                            <TableCell>Min k</TableCell>
+                                            <TableCell sx={{ width: 54, minWidth: 54 }}>Min k</TableCell>
                                             <TableCell>Complete mRNA annotation</TableCell>
                                           </TableRow>
                                         </TableHead>
@@ -1775,11 +1766,11 @@ export default function LeaderboardPanel() {
                                               <TableCell>
                                                 <SegmentBox segments={match.cds_segments} />
                                               </TableCell>
-                                              <TableCell>{formatScore(match.min_k, 0)}</TableCell>
+                                              <TableCell sx={{ width: 54, minWidth: 54 }}>{formatScore(match.min_k, 0)}</TableCell>
                                               <TableCell>
                                                 {new Set((transcript.annotated_transcripts || []).map((item) => item.pred_id)).has(match.pred_id)
                                                   ? "✅"
-                                                  : "❌ No complete mRNA annotation"}
+                                                  : "❌"}
                                               </TableCell>
                                             </TableRow>
                                           ))}
