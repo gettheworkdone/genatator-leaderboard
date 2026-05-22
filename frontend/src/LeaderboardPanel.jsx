@@ -793,9 +793,9 @@ export default function LeaderboardPanel() {
     <Stack spacing={0}>
       <Paper
         sx={{
-          px: { xs: 2.2, md: 2.6 },
-          pt: { xs: 0.6, md: 0.8 },
-          pb: { xs: 0.6, md: 0.8 },
+          px: { xs: 4.4, md: 5.2 },
+          pt: { xs: 0.4, md: 0.5 },
+          pb: { xs: 0.4, md: 0.5 },
           order: -1,
           mt: -1.1,
           mb: 2.0,
@@ -816,8 +816,9 @@ export default function LeaderboardPanel() {
             overflowY: "visible",
             whiteSpace: "nowrap",
             justifyContent: "center",
-            py: 0.8,
-            px: 0.8,
+            pt: 1.0,
+            pb: 1.0,
+            px: 1.2,
           }}
         >
           {[
