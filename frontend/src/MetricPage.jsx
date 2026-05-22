@@ -255,6 +255,18 @@ const METRIC_DESCRIPTION_HTML = String.raw`
   </p>
 
   <p>
+    The <strong>Annotated genes</strong> metric summarizes how many reference genes are recovered according to the
+    biologically meaningful annotation rules used by both branches of the evaluation. While the exon and CDS branch
+    metrics are reported separately, this metric combines them into a single gene-level recovery view that reflects
+    how different transcript classes should be judged. The motivation is that mRNA and lncRNA annotations have
+    different biological requirements: mRNA transcripts must be evaluated using both their transcribed exon structure
+    and their coding sequence structure, while lncRNA transcripts have no CDS and are therefore evaluated through exon
+    structure only. For mRNA genes at a specified value of <strong>k</strong>, the metric is implemented as the
+    intersection of genes recovered at the exon segmentation level and genes recovered at the CDS segmentation level,
+    so a gene is counted only when both structural requirements are satisfied.
+  </p>
+
+  <p>
     The metric also reports <strong>multi-isoform recovery</strong> (MI). MI is calculated only for genes that really have
     multiple distinct isoforms in the reference annotation. A gene contributes to MI only if the prediction recovers at least
     two distinct transcript objects that match at least two distinct annotated isoforms of that gene. Therefore, MI without
