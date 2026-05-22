@@ -842,7 +842,7 @@ export default function LeaderboardPanel() {
                 borderRadius: "999px",
                 textTransform: "none",
                 boxShadow: "0 1px 2px rgba(15, 23, 42, 0.12)",
-                my: 1.0,
+                my: 0.6,
                 px: 1.6,
                 "&:hover": { backgroundColor: "#c7ecdf" },
               }}
