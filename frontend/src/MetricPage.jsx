@@ -492,11 +492,11 @@ export default function MetricPage() {
               transcript annotation for the same genomic region.
             </Typography>
             <Typography color="text.secondary">
-              <span className="mono">pred_gff</span> is the path to the prediction GFF/GFF3 file. The evaluator reads predicted
+              <span className="mono">pred_gff</span> is the path to the prediction GFF or GFF3 file. The evaluator reads predicted
               transcript, exon, and CDS features from this file.
             </Typography>
             <Typography color="text.secondary">
-              <span className="mono">true_gff</span> is the path to the ground-truth GFF/GFF3 file. The evaluator reads
+              <span className="mono">true_gff</span> is the path to the ground-truth GFF or GFF3 file. The evaluator reads
               reference transcript, exon, and CDS features from this file.
             </Typography>
             <Typography color="text.secondary">
@@ -512,19 +512,38 @@ export default function MetricPage() {
               models that do not report strand information in their predictions.
             </Typography>
             <Typography color="text.secondary">
-              <span className="mono">gene_biotypes</span> is an optional filter for reference gene biotypes. For example,{" "}
-              <span className="mono">gene_biotypes=[&quot;protein_coding&quot;, &quot;lncRNA&quot;]</span> restricts the evaluation to those gene categories
-              when the corresponding annotations are present in the ground-truth file.
-            </Typography>
-            <Typography color="text.secondary">
-              <span className="mono">transcript_types</span> is an optional filter for reference transcript types. For example,{" "}
+              <span className="mono">transcript_types</span> is an optional filter for transcript classes. For example,{" "}
               <span className="mono">transcript_types=[&quot;mRNA&quot;, &quot;lnc_RNA&quot;]</span> evaluates only those transcript classes.
+              Transcript-type names are normalized internally, so common aliases such as{" "}
+              <span className="mono">lncRNA</span>, <span className="mono">lnc_RNA</span>, and <span className="mono">lnc-rna</span> are treated consistently.
             </Typography>
             <Typography color="text.secondary">
-              The output contains exon-branch metrics, CDS-branch metrics, stratified metrics, and detailed transcript-level
-              matching information. The stratifier reports the same metrics grouped by strand, chromosome, and transcript type.
-              The detailed output shows, for each ground-truth transcript, which predictions matched it and the minimum{" "}
-              <span className="mono">k</span> value required for the match.
+              During evaluation, predicted transcript types are matched only against reference transcripts of the same
+              transcript class.
+            </Typography>
+            <Typography color="text.secondary">
+              In the leaderboard-style setup, evaluation uses <span className="mono">use_strand=True</span>. The exon branch
+              evaluates <span className="mono">mRNA</span> and <span className="mono">lnc_RNA</span> transcripts. The CDS
+              branch evaluates <span className="mono">mRNA</span> transcripts with annotated coding sequence.
+            </Typography>
+            <Typography color="text.secondary">
+              The output contains exon-branch metrics, CDS-branch metrics, stratified metrics, detailed transcript-level
+              matching information, annotated transcript details, and annotated-gene counts. The stratifier reports the same
+              branch-specific metrics grouped by strand, chromosome, and transcript type. The detailed output shows, for each
+              ground-truth transcript, which predictions matched it and the minimum <span className="mono">k</span> value
+              required for each match.
+            </Typography>
+            <Typography color="text.secondary">
+              The annotated transcript details report which prediction IDs satisfy the final transcript annotation rule for each
+              reference transcript. For <span className="mono">mRNA</span>, a transcript is considered annotated only when the
+              same prediction recovers both exon and CDS segmentation for the same reference transcript. For non-mRNA transcript
+              types such as <span className="mono">lnc_RNA</span>, annotated transcripts are determined from exon segmentation.
+            </Typography>
+            <Typography color="text.secondary">
+              The annotated-genes output reports how many genes are recovered under the final annotation rule, grouped by
+              strand, chromosome, and transcript type. For <span className="mono">mRNA</span>, a gene is counted when at least
+              one transcript of that gene satisfies the exon-plus-CDS annotation rule. For non-mRNA transcript types such as{" "}
+              <span className="mono">lnc_RNA</span>, annotated genes are counted using exon segmentation.
             </Typography>
           </Stack>
         </Paper>
