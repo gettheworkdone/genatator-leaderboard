@@ -271,7 +271,49 @@ function SectionTitle({ icon = null, title, subtitle = null }) {
 }
 
 function PythonSnippet({ code }) {
-  return <>{code}</>;
+  const KEYWORDS = new Set([
+    "import",
+    "from",
+    "as",
+    "True",
+    "False",
+    "None",
+    "for",
+    "in",
+    "if",
+    "else",
+    "elif",
+    "print",
+    "and",
+    "or",
+    "not",
+  ]);
+  const lines = code.split("\n");
+  return (
+    <>
+      {lines.map((line, lineIdx) => {
+        const tokens = line.split(/(\s+|\"[^\"]*\"|'[^']*'|#.*$|\b[A-Za-z_][A-Za-z0-9_]*\b|\d+)/g);
+        return (
+          <React.Fragment key={`line-${lineIdx}`}>
+            {tokens.map((token, tokenIdx) => {
+              if (!token) return null;
+              let className = "";
+              if (token.startsWith("#")) className = "py-comment";
+              else if (/^\"[^\"]*\"|'[^']*'$/.test(token)) className = "py-string";
+              else if (/^\d+$/.test(token)) className = "py-number";
+              else if (KEYWORDS.has(token)) className = "py-keyword";
+              return (
+                <span className={className} key={`line-${lineIdx}-token-${tokenIdx}`}>
+                  {token}
+                </span>
+              );
+            })}
+            {lineIdx < lines.length - 1 ? "\n" : null}
+          </React.Fragment>
+        );
+      })}
+    </>
+  );
 }
 
 function CodePanel({ children }) {
