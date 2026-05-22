@@ -797,7 +797,7 @@ export default function LeaderboardPanel() {
           pt: { xs: 0.4, md: 0.6 },
           pb: { xs: 0.6, md: 0.8 },
           order: -1,
-          mt: 0,
+          mt: -1.1,
           position: "sticky",
           top: 42,
           zIndex: 20,
