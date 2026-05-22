@@ -793,11 +793,13 @@ export default function LeaderboardPanel() {
     <Stack spacing={0}>
       <Paper
         sx={{
-          p: { xs: 2.6, md: 2.8 },
+          px: { xs: 2.2, md: 2.6 },
+          pt: { xs: 0.4, md: 0.6 },
+          pb: { xs: 0.6, md: 0.8 },
           order: -1,
           mt: 0,
           position: "sticky",
-          top: 64,
+          top: 42,
           zIndex: 20,
           backgroundColor: "transparent !important",
           boxShadow: "none",
@@ -813,7 +815,7 @@ export default function LeaderboardPanel() {
             overflowY: "visible",
             whiteSpace: "nowrap",
             justifyContent: "center",
-            py: 1.2,
+            py: 0.8,
             px: 0.8,
           }}
         >
@@ -833,14 +835,14 @@ export default function LeaderboardPanel() {
               href={`#${id}`}
               variant="contained"
               sx={{
-                backgroundColor: "#ffffff",
+                backgroundColor: "#d9f4ec",
                 color: "primary.main",
                 borderRadius: "999px",
                 textTransform: "none",
                 boxShadow: "0 1px 2px rgba(15, 23, 42, 0.12)",
-                my: 0.5,
+                my: 0.2,
                 px: 1.6,
-                "&:hover": { backgroundColor: "#f8fafc" },
+                "&:hover": { backgroundColor: "#c7ecdf" },
               }}
             >
               {label}
@@ -1090,7 +1092,6 @@ export default function LeaderboardPanel() {
                     <TableCell>MI w/o seg.</TableCell>
                     <TableCell className="rank-column-highlight">F1 with seg.</TableCell>
                     <TableCell>MI with seg.</TableCell>
-                    <TableCell>Annotated genes</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1198,7 +1199,6 @@ export default function LeaderboardPanel() {
                       >
                         {formatScore(row.cds_segmentation_mi, 0)}
                       </TableCell>
-                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1331,7 +1331,6 @@ export default function LeaderboardPanel() {
                     <TableCell colSpan={3} align="center">
                       Exact part level
                     </TableCell>
-                    <TableCell rowSpan={2}>Annotated genes</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell>Precision</TableCell>
@@ -1479,7 +1478,6 @@ export default function LeaderboardPanel() {
                       >
                         {formatScore(row.part_f1)}
                       </TableCell>
-                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1559,7 +1557,6 @@ export default function LeaderboardPanel() {
                     <TableCell>Segmentation F1</TableCell>
                     <TableCell>Segmentation MI</TableCell>
                     <TableCell>Exact part F1</TableCell>
-                    <TableCell>Annotated genes</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1572,7 +1569,6 @@ export default function LeaderboardPanel() {
                       <TableCell>{formatScore(row.segmentation_f1)}</TableCell>
                       <TableCell>{formatScore(row.segmentation_mi, 0)}</TableCell>
                       <TableCell>{formatScore(row.part_f1)}</TableCell>
-                      <TableCell>{formatScore(row.annotated_genes, 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1688,7 +1684,7 @@ export default function LeaderboardPanel() {
                                   <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                                     <Typography fontWeight={760}>{transcript.transcript_id}</Typography>
                                     <Chip size="small" label={transcript.transcript_type} />
-                                    <Chip size="small" color={transcript.is_annotated ? "success" : "default"} label={transcript.is_annotated ? "✅ Complete mRNA annotation" : "❌ Not annotated"} />
+                                    <Chip size="small" color={transcript.is_annotated ? "success" : "default"} label={transcript.is_annotated ? "✅ Complete mRNA annotation" : "❌ No complete mRNA annotations"} />
                                     <Chip size="small" variant="outlined" label={`${transcript.length} nt`} />
                                     <Chip
                                       size="small"
@@ -1744,7 +1740,7 @@ export default function LeaderboardPanel() {
                                             <TableCell>Coordinate</TableCell>
                                             <TableCell>Exon segments</TableCell>
                                             <TableCell>CDS segments</TableCell>
-                                            <TableCell>Min k</TableCell>
+                                            <TableCell sx={{ width: 54, minWidth: 54 }}>Min k</TableCell>
                                             <TableCell>Complete mRNA annotation</TableCell>
                                           </TableRow>
                                         </TableHead>
@@ -1775,11 +1771,11 @@ export default function LeaderboardPanel() {
                                               <TableCell>
                                                 <SegmentBox segments={match.cds_segments} />
                                               </TableCell>
-                                              <TableCell>{formatScore(match.min_k, 0)}</TableCell>
+                                              <TableCell sx={{ width: 54, minWidth: 54 }}>{formatScore(match.min_k, 0)}</TableCell>
                                               <TableCell>
                                                 {new Set((transcript.annotated_transcripts || []).map((item) => item.pred_id)).has(match.pred_id)
                                                   ? "✅"
-                                                  : "❌ No complete mRNA annotation"}
+                                                  : "❌"}
                                               </TableCell>
                                             </TableRow>
                                           ))}
