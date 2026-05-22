@@ -411,7 +411,7 @@ export default function MetricPage() {
     <Stack spacing={3.2}>
       <Paper className="glass-card hero-card" sx={{ p: { xs: 2.4, md: 3.4 } }}>
         <Stack spacing={2.2}>
-          <SectionTitle title="Metrics description" />
+          <SectionTitle title="Metric description" />
 
           <Box sx={{ position: "relative" }}>
             <Box
