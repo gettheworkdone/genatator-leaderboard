@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Accordion,
   AccordionDetails,
@@ -291,14 +292,32 @@ const METRIC_TOOLTIPS = Object.freeze({
 
 function MetricHeaderTooltip({ label, tooltipHtml }) {
   const [state, setState] = useState({ open: false, x: 0, y: 0 });
-  const offset = 12;
-  const openAt = useCallback((event) => {
-    setState({ open: true, x: event.clientX + offset, y: event.clientY + offset });
+  const offsetX = 8;
+  const offsetY = 8;
+  const updateFromMouseEvent = useCallback((event) => {
+    setState({ open: true, x: event.clientX + offsetX, y: event.clientY + offsetY });
   }, []);
+  const openAt = useCallback((event) => {
+    if (typeof event.clientX === "number" && typeof event.clientY === "number") {
+      updateFromMouseEvent(event);
+      return;
+    }
+    const rect = event.currentTarget?.getBoundingClientRect?.();
+    if (!rect) {
+      setState((prev) => ({ ...prev, open: true }));
+      return;
+    }
+    setState({
+      open: true,
+      x: rect.left + rect.width / 2 + offsetX,
+      y: rect.top + rect.height + offsetY,
+    });
+  }, [updateFromMouseEvent]);
   const moveAt = useCallback((event) => {
-    setState((prev) =>
-      prev.open ? { ...prev, x: event.clientX + offset, y: event.clientY + offset } : prev,
-    );
+    setState((prev) => {
+      if (!prev.open) return prev;
+      return { ...prev, x: event.clientX + offsetX, y: event.clientY + offsetY };
+    });
   }, []);
   const close = useCallback(() => setState((prev) => ({ ...prev, open: false })), []);
   return (
@@ -315,27 +334,30 @@ function MetricHeaderTooltip({ label, tooltipHtml }) {
       >
         {label}
       </Box>
-      {state.open ? (
-        <Box
-          sx={{
-            position: "fixed",
-            top: state.y,
-            left: state.x,
-            zIndex: 1600,
-            pointerEvents: "none",
-            maxWidth: 420,
-            px: 1.1,
-            py: 0.8,
-            fontSize: "0.78rem",
-            lineHeight: 1.4,
-            borderRadius: 1,
-            border: "1px solid rgba(15, 118, 110, 0.25)",
-            backgroundColor: "rgba(255, 255, 255, 0.98)",
-            boxShadow: "0 8px 24px rgba(15, 23, 42, 0.14)",
-          }}
-          dangerouslySetInnerHTML={{ __html: tooltipHtml }}
-        />
-      ) : null}
+      {state.open
+        ? createPortal(
+            <Box
+              sx={{
+                position: "fixed",
+                top: state.y,
+                left: state.x,
+                zIndex: 1600,
+                pointerEvents: "none",
+                maxWidth: 420,
+                px: 1.1,
+                py: 0.8,
+                fontSize: "0.78rem",
+                lineHeight: 1.4,
+                borderRadius: 1,
+                border: "1px solid rgba(15, 118, 110, 0.25)",
+                backgroundColor: "rgba(255, 255, 255, 0.98)",
+                boxShadow: "0 8px 24px rgba(15, 23, 42, 0.14)",
+              }}
+              dangerouslySetInnerHTML={{ __html: tooltipHtml }}
+            />,
+            document.body,
+          )
+        : null}
     </>
   );
 }
