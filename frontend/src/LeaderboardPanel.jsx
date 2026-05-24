@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Accordion,
   AccordionDetails,
@@ -226,6 +227,141 @@ function BranchTabs({ value, onChange }) {
   );
 }
 
+const METRIC_TOOLTIPS = Object.freeze({
+  main: {
+    annotated_genes:
+      "<strong>Annotated genes:</strong> Number of distinct reference genes considered correctly annotated at the active k. For mRNA, the same prediction must recover the same transcript in both exon and CDS segmentation, and for lnc_RNA, exon segmentation is sufficient.",
+    exon_interval_f1:
+      "<strong>F1 w/o seg.:</strong> Exon-branch interval F1 at the active k, before checking the internal exon chain. It measures whether predicted transcript boundaries are close enough to the reference, so it can be high even when splice structure is wrong.",
+    exon_interval_mi:
+      "<strong>MI w/o seg.:</strong> Number of multi-isoform genes recovered in the exon branch at the interval level. It checks whether multiple transcript intervals of the same gene are supported before internal exon structure is considered.",
+    exon_segmentation_f1:
+      "<strong>F1 with seg.:</strong> Exon-branch F1 after the exon segmentation check. A matched prediction must also have the correct exon-intron structure for this branch, with k applied to outer transcript boundaries only.",
+    exon_segmentation_mi:
+      "<strong>MI with seg.:</strong> Number of multi-isoform genes recovered in the exon branch after exon segmentation is checked. It highlights genes where multiple distinct exon structures are supported by distinct predictions.",
+    cds_interval_f1:
+      "<strong>F1 w/o seg.:</strong> CDS-branch interval F1 at the active k, before checking individual CDS segments. It measures whether the predicted coding span is placed close enough to the reference coding span.",
+    cds_interval_mi:
+      "<strong>MI w/o seg.:</strong> Number of multi-isoform genes recovered in the CDS branch at the coding-span interval level. It checks whether multiple coding isoforms are supported before exact CDS segmentation is required.",
+    cds_segmentation_f1:
+      "<strong>F1 with seg.:</strong> CDS-branch F1 after exact CDS segmentation is checked. This is stricter than CDS interval matching because the predicted coding pieces must match the reference CDS structure.",
+    cds_segmentation_mi:
+      "<strong>MI with seg.:</strong> Number of multi-isoform genes recovered in the CDS branch after exact CDS structure is checked. It counts genes where multiple distinct coding isoforms are structurally recovered.",
+  },
+  full: {
+    annotated_genes:
+      "<strong>Annotated genes:</strong> Number of distinct reference genes annotated at the active k using the combined exon/CDS rule. mRNA genes require matching exon and CDS segmentation for the same transcript-prediction pair, while lnc_RNA genes are counted from exon segmentation only.",
+    interval_precision:
+      "<strong>Precision:</strong> In the Interval level block, this is the share of predicted transcript objects in the selected branch that match a reference interval at the active k. It reflects how many predictions are supported by reference boundaries before internal structure is checked.",
+    interval_recall:
+      "<strong>Recall:</strong> In the Interval level block, this is the share of reference genes recovered by at least one matched prediction in the selected branch. Recall is counted over genes, not individual transcript isoforms, to avoid ambiguity when several isoforms share the same outer interval.",
+    interval_f1:
+      "<strong>F1:</strong> In the Interval level block, this summarizes how well the selected branch balances supported predictions and recovered genes before segmentation is checked. It mainly reflects boundary placement, not exon-intron or CDS-chain correctness.",
+    interval_mi:
+      "<strong>MI:</strong> In the Interval level block, this counts multi-isoform genes recovered before internal structure is checked. It shows whether the model supports multiple transcript or coding intervals for the same gene at the selected k.",
+    segmentation_precision:
+      "<strong>Precision:</strong> In the Segmentation level block, this is the share of predicted objects that first match by interval and then pass the branch-specific structural check. In the exon branch it checks exon-intron structure, and in the CDS branch it checks CDS segment structure.",
+    segmentation_recall:
+      "<strong>Recall:</strong> In the Segmentation level block, this is the share of reference genes recovered after internal structure is checked. It is stricter than interval recall because finding the right genomic span is not enough.",
+    segmentation_f1:
+      "<strong>F1:</strong> In the Segmentation level block, this summarizes recovery after both interval placement and internal structure are considered. It is the branch-level score closest to asking whether the transcript or CDS structure was reconstructed correctly.",
+    segmentation_mi:
+      "<strong>MI:</strong> In the Segmentation level block, this counts multi-isoform genes recovered after structural validation. It shows whether multiple isoforms are recovered as real exon or CDS structures rather than only approximate intervals.",
+    part_precision:
+      "<strong>Precision:</strong> In the Exact part level block, this is the share of unique predicted parts that exactly match reference parts. Parts are exons in the exon branch and CDS intervals in the CDS branch, and full transcript assembly is ignored.",
+    part_recall:
+      "<strong>Recall:</strong> In the Exact part level block, this is the share of unique reference parts recovered exactly by predictions. It can be useful when the model finds correct pieces but fails to assemble complete transcripts.",
+    part_f1:
+      "<strong>F1:</strong> In the Exact part level block, this summarizes exact exon or CDS piece recovery. It evaluates segment-level correctness independently from full transcript matching.",
+  },
+  stratifier: {
+    annotated_genes:
+      "<strong>Annotated genes:</strong> Number of distinct reference genes annotated inside this group at the active k. The same combined rule is used here: mRNA requires both exon and CDS segmentation for the same transcript-prediction pair, while lnc_RNA uses exon segmentation only.",
+    interval_f1:
+      "<strong>Interval F1:</strong> Interval-level F1 recalculated only within the selected group. It shows how well the model places transcript or coding intervals for this subset before internal structure is checked.",
+    interval_mi:
+      "<strong>Interval MI:</strong> Number of multi-isoform genes recovered in this group at the interval level. It measures group-specific isoform recovery before exon or CDS structure is validated.",
+    segmentation_f1:
+      "<strong>Segmentation F1:</strong> Segmentation-level F1 recalculated only within the selected group. It includes the branch-specific internal structure check, so exon branch scores consider exon-intron structure and CDS branch scores consider CDS structure.",
+    segmentation_mi:
+      "<strong>Segmentation MI:</strong> Number of multi-isoform genes recovered in this group after the structural check. It is stricter than Interval MI because supported isoforms must also have valid exon or CDS segmentation.",
+    part_f1:
+      "<strong>Exact part F1:</strong> Exact part-level F1 recalculated only within the selected group. It measures recovery of individual exon or CDS pieces without requiring them to be assembled into the correct full transcript.",
+  },
+});
+
+function MetricHeaderTooltip({ label, tooltipHtml }) {
+  const [state, setState] = useState({ open: false, x: 0, y: 0 });
+  const offsetX = 16;
+  const offsetY = 16;
+  const updateFromMouseEvent = useCallback((event) => {
+    setState({ open: true, x: event.clientX + offsetX, y: event.clientY + offsetY });
+  }, []);
+  const openAt = useCallback((event) => {
+    if (typeof event.clientX === "number" && typeof event.clientY === "number") {
+      updateFromMouseEvent(event);
+      return;
+    }
+    const rect = event.currentTarget?.getBoundingClientRect?.();
+    if (!rect) {
+      setState((prev) => ({ ...prev, open: true }));
+      return;
+    }
+    setState({
+      open: true,
+      x: rect.left + rect.width / 2 + offsetX,
+      y: rect.top + rect.height + offsetY,
+    });
+  }, [updateFromMouseEvent]);
+  const moveAt = useCallback((event) => {
+    setState((prev) => {
+      if (!prev.open) return prev;
+      return { ...prev, x: event.clientX + offsetX, y: event.clientY + offsetY };
+    });
+  }, []);
+  const close = useCallback(() => setState((prev) => ({ ...prev, open: false })), []);
+  return (
+    <>
+      <Box
+        component="span"
+        sx={{ cursor: "help", display: "inline-flex", alignItems: "center" }}
+        tabIndex={0}
+        onMouseEnter={openAt}
+        onMouseMove={moveAt}
+        onMouseLeave={close}
+        onFocus={openAt}
+        onBlur={close}
+      >
+        {label}
+      </Box>
+      {state.open
+        ? createPortal(
+            <Box
+              sx={{
+                position: "fixed",
+                top: state.y,
+                left: state.x,
+                zIndex: 1600,
+                pointerEvents: "none",
+                maxWidth: 420,
+                px: 1.1,
+                py: 0.8,
+                fontSize: "0.78rem",
+                lineHeight: 1.4,
+                borderRadius: 1,
+                border: "1px solid rgba(15, 118, 110, 0.25)",
+                backgroundColor: "rgba(255, 255, 255, 0.98)",
+                boxShadow: "0 8px 24px rgba(15, 23, 42, 0.14)",
+              }}
+              dangerouslySetInnerHTML={{ __html: tooltipHtml }}
+            />,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
+
 function modelValueAtK(overview, model, branch, metricKey, selectedK) {
   if (!overview || !model?.curves?.[branch]?.[metricKey]) return null;
   const index = Math.max(0, Math.min(Number(selectedK) || 0, overview.k_values.length - 1));
@@ -288,8 +424,6 @@ export default function LeaderboardPanel() {
   const [stratifier, setStratifier] = useState(null);
 
   const [detailBranch, setDetailBranch] = useState("exon");
-
-  const highlightedMainSortColumn = useMemo(() => sortMetric, [sortMetric]);
 
   const [geneQuery, setGeneQuery] = useState("");
   const [genePage, setGenePage] = useState(1);
@@ -725,7 +859,7 @@ export default function LeaderboardPanel() {
       const baseName = uploadFile.name.replace(/\.[^.]+$/, "") || "Temporary preview";
       const modelName = uploadModelName.trim() || baseName;
 
-      const response = await fetch("/api/leaderboard/upload", {
+      const response = await fetch("/api/leaderboard/temporary-preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -736,7 +870,7 @@ export default function LeaderboardPanel() {
 
       const payload = await response.json();
       if (!response.ok) {
-        setUploadMessage(payload.detail || "Upload failed.");
+        setUploadMessage(payload.detail || "Preview failed.");
         return;
       }
 
@@ -744,7 +878,7 @@ export default function LeaderboardPanel() {
         const next = current.filter((item) => item.model?.model_id !== payload.model?.model_id);
         return [...next, payload];
       });
-      setUploadMessage("Temporary preview loaded.");
+      setUploadMessage("Your submission is in queue.");
       setUploadFile(null);
       setUploadModelName("");
 
@@ -753,7 +887,7 @@ export default function LeaderboardPanel() {
       }
 
     } catch (error) {
-      setUploadMessage(error?.message || "Upload failed.");
+      setUploadMessage(error?.message || "Preview failed.");
     } finally {
       setUploadLoading(false);
     }
@@ -971,7 +1105,7 @@ export default function LeaderboardPanel() {
           {uploadLoading ? (
             <Box className="score-calc-animation">
               <span className="orb" />
-              <Typography color="text.secondary">Calculating metrics for you model...</Typography>
+              <Typography color="text.secondary">Calculating metrics for your model...</Typography>
             </Box>
           ) : null}
 
@@ -1077,7 +1211,7 @@ export default function LeaderboardPanel() {
                       Rank
                     </TableCell>
                     <TableCell rowSpan={2} sx={{ width: 280, minWidth: 280 }}>Model</TableCell>
-                    <TableCell rowSpan={2} sx={{ width: 165, minWidth: 165 }}>Annotated genes</TableCell>
+                    <TableCell rowSpan={2} className="rank-column-highlight" sx={{ width: 165, minWidth: 165 }}><MetricHeaderTooltip label="Annotated genes" tooltipHtml={METRIC_TOOLTIPS.main.annotated_genes} /></TableCell>
                     <TableCell colSpan={4} align="center">
                       Exon
                     </TableCell>
@@ -1086,14 +1220,14 @@ export default function LeaderboardPanel() {
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell className={highlightedMainSortColumn === "exon_interval_f1" ? "rank-column-highlight" : undefined}>F1 w/o seg.</TableCell>
-                    <TableCell className={highlightedMainSortColumn === "exon_interval_mi" ? "rank-column-highlight" : undefined}>MI w/o seg.</TableCell>
-                    <TableCell className={highlightedMainSortColumn === "exon_segmentation_f1" ? "rank-column-highlight" : undefined}>F1 with seg.</TableCell>
-                    <TableCell className={highlightedMainSortColumn === "exon_segmentation_mi" ? "rank-column-highlight" : undefined}>MI with seg.</TableCell>
-                    <TableCell className={highlightedMainSortColumn === "cds_interval_f1" ? "rank-column-highlight" : undefined}>F1 w/o seg.</TableCell>
-                    <TableCell className={highlightedMainSortColumn === "cds_interval_mi" ? "rank-column-highlight" : undefined}>MI w/o seg.</TableCell>
-                    <TableCell className={highlightedMainSortColumn === "cds_segmentation_f1" ? "rank-column-highlight" : undefined}>F1 with seg.</TableCell>
-                    <TableCell className={highlightedMainSortColumn === "cds_segmentation_mi" ? "rank-column-highlight" : undefined}>MI with seg.</TableCell>
+                    <TableCell><MetricHeaderTooltip label="F1 w/o seg." tooltipHtml={METRIC_TOOLTIPS.main.exon_interval_f1} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="MI w/o seg." tooltipHtml={METRIC_TOOLTIPS.main.exon_interval_mi} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="F1 with seg." tooltipHtml={METRIC_TOOLTIPS.main.exon_segmentation_f1} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="MI with seg." tooltipHtml={METRIC_TOOLTIPS.main.exon_segmentation_mi} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="F1 w/o seg." tooltipHtml={METRIC_TOOLTIPS.main.cds_interval_f1} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="MI w/o seg." tooltipHtml={METRIC_TOOLTIPS.main.cds_interval_mi} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="F1 with seg." tooltipHtml={METRIC_TOOLTIPS.main.cds_segmentation_f1} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="MI with seg." tooltipHtml={METRIC_TOOLTIPS.main.cds_segmentation_mi} /></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1118,9 +1252,8 @@ export default function LeaderboardPanel() {
                           )}
                         </Stack>
                       </TableCell>
-                      <TableCell sx={{ width: 165, minWidth: 165 }}>{formatScore(row.annotated_genes, 0)}</TableCell>
+                      <TableCell className="rank-column-highlight" sx={{ width: 165, minWidth: 165 }}>{formatScore(row.annotated_genes, 0)}</TableCell>
                       <TableCell
-                        className={highlightedMainSortColumn === "exon_interval_f1" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.exon_interval_f1 !== undefined &&
                           Number(row.exon_interval_f1) === mainColumnHighlights.exon_interval_f1
@@ -1131,7 +1264,6 @@ export default function LeaderboardPanel() {
                         {formatScore(row.exon_interval_f1)}
                       </TableCell>
                       <TableCell
-                        className={highlightedMainSortColumn === "exon_interval_mi" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.exon_interval_mi !== undefined &&
                           Number(row.exon_interval_mi) === mainColumnHighlights.exon_interval_mi
@@ -1142,7 +1274,6 @@ export default function LeaderboardPanel() {
                         {formatScore(row.exon_interval_mi, 0)}
                       </TableCell>
                       <TableCell
-                        className={highlightedMainSortColumn === "exon_segmentation_f1" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.exon_segmentation_f1 !== undefined &&
                           Number(row.exon_segmentation_f1) === mainColumnHighlights.exon_segmentation_f1
@@ -1153,7 +1284,6 @@ export default function LeaderboardPanel() {
                         {formatScore(row.exon_segmentation_f1)}
                       </TableCell>
                       <TableCell
-                        className={highlightedMainSortColumn === "exon_segmentation_mi" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.exon_segmentation_mi !== undefined &&
                           Number(row.exon_segmentation_mi) === mainColumnHighlights.exon_segmentation_mi
@@ -1164,7 +1294,6 @@ export default function LeaderboardPanel() {
                         {formatScore(row.exon_segmentation_mi, 0)}
                       </TableCell>
                       <TableCell
-                        className={highlightedMainSortColumn === "cds_interval_f1" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.cds_interval_f1 !== undefined &&
                           Number(row.cds_interval_f1) === mainColumnHighlights.cds_interval_f1
@@ -1175,7 +1304,6 @@ export default function LeaderboardPanel() {
                         {formatScore(row.cds_interval_f1)}
                       </TableCell>
                       <TableCell
-                        className={highlightedMainSortColumn === "cds_interval_mi" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.cds_interval_mi !== undefined &&
                           Number(row.cds_interval_mi) === mainColumnHighlights.cds_interval_mi
@@ -1186,7 +1314,6 @@ export default function LeaderboardPanel() {
                         {formatScore(row.cds_interval_mi, 0)}
                       </TableCell>
                       <TableCell
-                        className={highlightedMainSortColumn === "cds_segmentation_f1" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.cds_segmentation_f1 !== undefined &&
                           Number(row.cds_segmentation_f1) === mainColumnHighlights.cds_segmentation_f1
@@ -1197,7 +1324,6 @@ export default function LeaderboardPanel() {
                         {formatScore(row.cds_segmentation_f1)}
                       </TableCell>
                       <TableCell
-                        className={highlightedMainSortColumn === "cds_segmentation_mi" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.cds_segmentation_mi !== undefined &&
                           Number(row.cds_segmentation_mi) === mainColumnHighlights.cds_segmentation_mi
@@ -1329,7 +1455,7 @@ export default function LeaderboardPanel() {
                     <TableCell rowSpan={2} sx={{ width: 280, minWidth: 280 }}>
                       Model
                     </TableCell>
-                    <TableCell rowSpan={2} sx={{ width: 165, minWidth: 165 }}>Annotated genes</TableCell>
+                    <TableCell rowSpan={2} sx={{ width: 165, minWidth: 165 }}><MetricHeaderTooltip label="Annotated genes" tooltipHtml={METRIC_TOOLTIPS.full.annotated_genes} /></TableCell>
                     <TableCell colSpan={4} align="center">
                       Interval level
                     </TableCell>
@@ -1341,17 +1467,17 @@ export default function LeaderboardPanel() {
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell>Precision</TableCell>
-                    <TableCell>Recall</TableCell>
-                    <TableCell>F1</TableCell>
-                    <TableCell>MI</TableCell>
-                    <TableCell>Precision</TableCell>
-                    <TableCell>Recall</TableCell>
-                    <TableCell>F1</TableCell>
-                    <TableCell>MI</TableCell>
-                    <TableCell>Precision</TableCell>
-                    <TableCell>Recall</TableCell>
-                    <TableCell>F1</TableCell>
+                    <TableCell><MetricHeaderTooltip label="Precision" tooltipHtml={METRIC_TOOLTIPS.full.interval_precision} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="Recall" tooltipHtml={METRIC_TOOLTIPS.full.interval_recall} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="F1" tooltipHtml={METRIC_TOOLTIPS.full.interval_f1} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="MI" tooltipHtml={METRIC_TOOLTIPS.full.interval_mi} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="Precision" tooltipHtml={METRIC_TOOLTIPS.full.segmentation_precision} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="Recall" tooltipHtml={METRIC_TOOLTIPS.full.segmentation_recall} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="F1" tooltipHtml={METRIC_TOOLTIPS.full.segmentation_f1} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="MI" tooltipHtml={METRIC_TOOLTIPS.full.segmentation_mi} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="Precision" tooltipHtml={METRIC_TOOLTIPS.full.part_precision} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="Recall" tooltipHtml={METRIC_TOOLTIPS.full.part_recall} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="F1" tooltipHtml={METRIC_TOOLTIPS.full.part_f1} /></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1559,12 +1685,12 @@ export default function LeaderboardPanel() {
                 <TableHead>
                   <TableRow>
                     <TableCell>Group</TableCell>
-                    <TableCell sx={{ width: 165, minWidth: 165 }}>Annotated genes</TableCell>
-                    <TableCell>Interval F1</TableCell>
-                    <TableCell>Interval MI</TableCell>
-                    <TableCell>Segmentation F1</TableCell>
-                    <TableCell>Segmentation MI</TableCell>
-                    <TableCell>Exact part F1</TableCell>
+                    <TableCell sx={{ width: 165, minWidth: 165 }}><MetricHeaderTooltip label="Annotated genes" tooltipHtml={METRIC_TOOLTIPS.stratifier.annotated_genes} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="Interval F1" tooltipHtml={METRIC_TOOLTIPS.stratifier.interval_f1} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="Interval MI" tooltipHtml={METRIC_TOOLTIPS.stratifier.interval_mi} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="Segmentation F1" tooltipHtml={METRIC_TOOLTIPS.stratifier.segmentation_f1} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="Segmentation MI" tooltipHtml={METRIC_TOOLTIPS.stratifier.segmentation_mi} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="Exact part F1" tooltipHtml={METRIC_TOOLTIPS.stratifier.part_f1} /></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
