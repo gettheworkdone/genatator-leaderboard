@@ -425,8 +425,6 @@ export default function LeaderboardPanel() {
 
   const [detailBranch, setDetailBranch] = useState("exon");
 
-  const highlightedMainSortColumn = useMemo(() => sortMetric, [sortMetric]);
-
   const [geneQuery, setGeneQuery] = useState("");
   const [genePage, setGenePage] = useState(1);
   const [geneList, setGeneList] = useState({ items: [], total: 0, page: 1, page_size: 25 });
@@ -1213,7 +1211,7 @@ export default function LeaderboardPanel() {
                       Rank
                     </TableCell>
                     <TableCell rowSpan={2} sx={{ width: 280, minWidth: 280 }}>Model</TableCell>
-                    <TableCell rowSpan={2} sx={{ width: 165, minWidth: 165 }}><MetricHeaderTooltip label="Annotated genes" tooltipHtml={METRIC_TOOLTIPS.main.annotated_genes} /></TableCell>
+                    <TableCell rowSpan={2} className="rank-column-highlight" sx={{ width: 165, minWidth: 165 }}><MetricHeaderTooltip label="Annotated genes" tooltipHtml={METRIC_TOOLTIPS.main.annotated_genes} /></TableCell>
                     <TableCell colSpan={4} align="center">
                       Exon
                     </TableCell>
@@ -1222,14 +1220,14 @@ export default function LeaderboardPanel() {
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell className={highlightedMainSortColumn === "exon_interval_f1" ? "rank-column-highlight" : undefined}><MetricHeaderTooltip label="F1 w/o seg." tooltipHtml={METRIC_TOOLTIPS.main.exon_interval_f1} /></TableCell>
-                    <TableCell className={highlightedMainSortColumn === "exon_interval_mi" ? "rank-column-highlight" : undefined}><MetricHeaderTooltip label="MI w/o seg." tooltipHtml={METRIC_TOOLTIPS.main.exon_interval_mi} /></TableCell>
-                    <TableCell className={highlightedMainSortColumn === "exon_segmentation_f1" ? "rank-column-highlight" : undefined}><MetricHeaderTooltip label="F1 with seg." tooltipHtml={METRIC_TOOLTIPS.main.exon_segmentation_f1} /></TableCell>
-                    <TableCell className={highlightedMainSortColumn === "exon_segmentation_mi" ? "rank-column-highlight" : undefined}><MetricHeaderTooltip label="MI with seg." tooltipHtml={METRIC_TOOLTIPS.main.exon_segmentation_mi} /></TableCell>
-                    <TableCell className={highlightedMainSortColumn === "cds_interval_f1" ? "rank-column-highlight" : undefined}><MetricHeaderTooltip label="F1 w/o seg." tooltipHtml={METRIC_TOOLTIPS.main.cds_interval_f1} /></TableCell>
-                    <TableCell className={highlightedMainSortColumn === "cds_interval_mi" ? "rank-column-highlight" : undefined}><MetricHeaderTooltip label="MI w/o seg." tooltipHtml={METRIC_TOOLTIPS.main.cds_interval_mi} /></TableCell>
-                    <TableCell className={highlightedMainSortColumn === "cds_segmentation_f1" ? "rank-column-highlight" : undefined}><MetricHeaderTooltip label="F1 with seg." tooltipHtml={METRIC_TOOLTIPS.main.cds_segmentation_f1} /></TableCell>
-                    <TableCell className={highlightedMainSortColumn === "cds_segmentation_mi" ? "rank-column-highlight" : undefined}><MetricHeaderTooltip label="MI with seg." tooltipHtml={METRIC_TOOLTIPS.main.cds_segmentation_mi} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="F1 w/o seg." tooltipHtml={METRIC_TOOLTIPS.main.exon_interval_f1} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="MI w/o seg." tooltipHtml={METRIC_TOOLTIPS.main.exon_interval_mi} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="F1 with seg." tooltipHtml={METRIC_TOOLTIPS.main.exon_segmentation_f1} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="MI with seg." tooltipHtml={METRIC_TOOLTIPS.main.exon_segmentation_mi} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="F1 w/o seg." tooltipHtml={METRIC_TOOLTIPS.main.cds_interval_f1} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="MI w/o seg." tooltipHtml={METRIC_TOOLTIPS.main.cds_interval_mi} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="F1 with seg." tooltipHtml={METRIC_TOOLTIPS.main.cds_segmentation_f1} /></TableCell>
+                    <TableCell><MetricHeaderTooltip label="MI with seg." tooltipHtml={METRIC_TOOLTIPS.main.cds_segmentation_mi} /></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1254,9 +1252,8 @@ export default function LeaderboardPanel() {
                           )}
                         </Stack>
                       </TableCell>
-                      <TableCell sx={{ width: 165, minWidth: 165 }}>{formatScore(row.annotated_genes, 0)}</TableCell>
+                      <TableCell className="rank-column-highlight" sx={{ width: 165, minWidth: 165 }}>{formatScore(row.annotated_genes, 0)}</TableCell>
                       <TableCell
-                        className={highlightedMainSortColumn === "exon_interval_f1" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.exon_interval_f1 !== undefined &&
                           Number(row.exon_interval_f1) === mainColumnHighlights.exon_interval_f1
@@ -1267,7 +1264,6 @@ export default function LeaderboardPanel() {
                         {formatScore(row.exon_interval_f1)}
                       </TableCell>
                       <TableCell
-                        className={highlightedMainSortColumn === "exon_interval_mi" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.exon_interval_mi !== undefined &&
                           Number(row.exon_interval_mi) === mainColumnHighlights.exon_interval_mi
@@ -1278,7 +1274,6 @@ export default function LeaderboardPanel() {
                         {formatScore(row.exon_interval_mi, 0)}
                       </TableCell>
                       <TableCell
-                        className={highlightedMainSortColumn === "exon_segmentation_f1" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.exon_segmentation_f1 !== undefined &&
                           Number(row.exon_segmentation_f1) === mainColumnHighlights.exon_segmentation_f1
@@ -1289,7 +1284,6 @@ export default function LeaderboardPanel() {
                         {formatScore(row.exon_segmentation_f1)}
                       </TableCell>
                       <TableCell
-                        className={highlightedMainSortColumn === "exon_segmentation_mi" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.exon_segmentation_mi !== undefined &&
                           Number(row.exon_segmentation_mi) === mainColumnHighlights.exon_segmentation_mi
@@ -1300,7 +1294,6 @@ export default function LeaderboardPanel() {
                         {formatScore(row.exon_segmentation_mi, 0)}
                       </TableCell>
                       <TableCell
-                        className={highlightedMainSortColumn === "cds_interval_f1" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.cds_interval_f1 !== undefined &&
                           Number(row.cds_interval_f1) === mainColumnHighlights.cds_interval_f1
@@ -1311,7 +1304,6 @@ export default function LeaderboardPanel() {
                         {formatScore(row.cds_interval_f1)}
                       </TableCell>
                       <TableCell
-                        className={highlightedMainSortColumn === "cds_interval_mi" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.cds_interval_mi !== undefined &&
                           Number(row.cds_interval_mi) === mainColumnHighlights.cds_interval_mi
@@ -1322,7 +1314,6 @@ export default function LeaderboardPanel() {
                         {formatScore(row.cds_interval_mi, 0)}
                       </TableCell>
                       <TableCell
-                        className={highlightedMainSortColumn === "cds_segmentation_f1" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.cds_segmentation_f1 !== undefined &&
                           Number(row.cds_segmentation_f1) === mainColumnHighlights.cds_segmentation_f1
@@ -1333,7 +1324,6 @@ export default function LeaderboardPanel() {
                         {formatScore(row.cds_segmentation_f1)}
                       </TableCell>
                       <TableCell
-                        className={highlightedMainSortColumn === "cds_segmentation_mi" ? "rank-column-highlight" : undefined}
                         sx={
                           mainColumnHighlights.cds_segmentation_mi !== undefined &&
                           Number(row.cds_segmentation_mi) === mainColumnHighlights.cds_segmentation_mi
