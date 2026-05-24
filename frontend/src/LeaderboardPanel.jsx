@@ -230,7 +230,7 @@ function BranchTabs({ value, onChange }) {
 const METRIC_TOOLTIPS = Object.freeze({
   main: {
     annotated_genes:
-      "<strong>Annotated genes:</strong> Number of distinct reference genes considered correctly annotated at the active k. For mRNA, the same prediction must recover the same transcript in both exon and CDS segmentation; for lnc_RNA, exon segmentation is sufficient.",
+      "<strong>Annotated genes:</strong> Number of distinct reference genes considered correctly annotated at the active k. For mRNA, the same prediction must recover the same transcript in both exon and CDS segmentation, and for lnc_RNA, exon segmentation is sufficient.",
     exon_interval_f1:
       "<strong>F1 w/o seg.:</strong> Exon-branch interval F1 at the active k, before checking the internal exon chain. It measures whether predicted transcript boundaries are close enough to the reference, so it can be high even when splice structure is wrong.",
     exon_interval_mi:
@@ -260,7 +260,7 @@ const METRIC_TOOLTIPS = Object.freeze({
     interval_mi:
       "<strong>MI:</strong> In the Interval level block, this counts multi-isoform genes recovered before internal structure is checked. It shows whether the model supports multiple transcript or coding intervals for the same gene at the selected k.",
     segmentation_precision:
-      "<strong>Precision:</strong> In the Segmentation level block, this is the share of predicted objects that first match by interval and then pass the branch-specific structural check. In the exon branch it checks exon-intron structure; in the CDS branch it checks CDS segment structure.",
+      "<strong>Precision:</strong> In the Segmentation level block, this is the share of predicted objects that first match by interval and then pass the branch-specific structural check. In the exon branch it checks exon-intron structure, and in the CDS branch it checks CDS segment structure.",
     segmentation_recall:
       "<strong>Recall:</strong> In the Segmentation level block, this is the share of reference genes recovered after internal structure is checked. It is stricter than interval recall because finding the right genomic span is not enough.",
     segmentation_f1:
