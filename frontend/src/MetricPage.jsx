@@ -20,15 +20,6 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 const METRIC_DESCRIPTION_HTML = String.raw`
 <section id="metric-description">
   <p>
-    This metric is designed for genome annotation cases where a prediction can look locally accurate while still being
-    biologically wrong. A small shift at a transcript, exon, or coding boundary may preserve much of the basewise signal,
-    but it can still change splice structure, disrupt the coding frame, or alter the translated product. For that reason,
-    the metric does not rely on per-nucleotide comparison. Instead, it was designed to account for the main biological
-    constraints of gene annotation. Splice-site boundaries are assessed strictly, while the tolerance parameter <em>k</em> is
-    introduced to reflect the fact that transcription start and end positions can vary in real cells.
-  </p>
-
-  <p>
     The metric has two branches. The <strong>exon branch</strong> evaluates transcript structure for mRNA and lncRNA genes.
     For mRNA transcripts, this includes both UTR exons and coding exons. The <strong>CDS branch</strong> evaluates the
     coding sequence structure of mRNA transcripts. In simple terms, the exon branch asks whether the model recovers the
@@ -162,6 +153,15 @@ const METRIC_DESCRIPTION_HTML = String.raw`
     the intersection of genes recovered at the exon segmentation level and genes recovered at the CDS segmentation level, so a gene
     is counted only when both structural requirements are satisfied.
   </p>
+  <p>
+    This metric is designed for genome annotation cases where a prediction can look locally accurate while still being
+    biologically wrong. A small shift at a transcript, exon, or coding boundary may preserve much of the basewise signal,
+    but it can still change splice structure, disrupt the coding frame, or alter the translated product. For that reason,
+    the metric does not rely on per-nucleotide comparison. Instead, it was designed to account for the main biological
+    constraints of gene annotation. Splice-site boundaries are assessed strictly, while the tolerance parameter <em>k</em> is
+    introduced to reflect the fact that transcription start and end positions can vary in real cells.
+  </p>
+
 </section>
 `;
 const EVALUATE_SNIPPET = `# How to use this metric with Hugging Face Evaluate

@@ -90,7 +90,7 @@ const LEADERBOARD_DESCRIPTION_HTML = String.raw`
   </p>
 
   <p>
-    The first panel, <strong>Main metrics</strong>, gives the fastest overview. You can specify the active tolerance
+    The first panel, <strong>Main metrics</strong>, gives the fastest overview. You can specify the tolerance
     <strong>k</strong>, and all metrics across the leaderboard are updated to that same value. Here, <strong>k</strong>
     is the allowed deviation, in base pairs, between predicted and reference transcript boundaries. In this context,
     transcript start means the first transcribed nucleotide, and transcript end means the last transcribed nucleotide.
@@ -113,7 +113,7 @@ const LEADERBOARD_DESCRIPTION_HTML = String.raw`
     CDS structure. Conceptually, this is similar to comparing BED-like intervals that contain only transcript
     starts and ends. It asks whether the predicted transcript or coding interval is placed in the right genomic
     region, without asking whether the internal exon or CDS chain is correct. <strong>MI w/o seg.</strong> is the
-    corresponding multi-isoform count at this interval level. <strong>F1 with seg.</strong> is stricter. After a
+    corresponding multi-isoform count, showing how many genes were annotated with &gt;1 isoform. <strong>F1 with seg.</strong> is stricter. After a
     prediction is matched by interval, it must also pass the segmentation check. This score asks whether the model
     not only found the right region, but also reconstructed the relevant exon or CDS structure.
     <strong>MI with seg.</strong> is the multi-isoform count after the same structural check. You can also use
@@ -234,7 +234,7 @@ const METRIC_TOOLTIPS = Object.freeze({
     exon_interval_f1:
       "<strong>F1 w/o seg.:</strong> Exon-branch interval F1 at the active k, before checking the internal exon chain. It measures whether predicted transcript boundaries are close enough to the reference, so it can be high even when splice structure is wrong.",
     exon_interval_mi:
-      "<strong>MI w/o seg.:</strong> Number of multi-isoform genes recovered in the exon branch at the interval level. It checks whether multiple transcript intervals of the same gene are supported before internal exon structure is considered.",
+      "<strong>MI w/o seg.:</strong> Number of multi-isoform genes recovered in the exon branch at the interval level, showing how many genes were annotated with &gt;1 isoform. It checks whether multiple transcript intervals of the same gene are supported before internal exon structure is considered.",
     exon_segmentation_f1:
       "<strong>F1 with seg.:</strong> Exon-branch F1 after the exon segmentation check. A matched prediction must also have the correct exon-intron structure for this branch, with k applied to outer transcript boundaries only.",
     exon_segmentation_mi:
@@ -242,7 +242,7 @@ const METRIC_TOOLTIPS = Object.freeze({
     cds_interval_f1:
       "<strong>F1 w/o seg.:</strong> CDS-branch interval F1 at the active k, before checking individual CDS segments. It measures whether the predicted coding span is placed close enough to the reference coding span.",
     cds_interval_mi:
-      "<strong>MI w/o seg.:</strong> Number of multi-isoform genes recovered in the CDS branch at the coding-span interval level. It checks whether multiple coding isoforms are supported before exact CDS segmentation is required.",
+      "<strong>MI w/o seg.:</strong> Number of multi-isoform genes recovered in the CDS branch at the coding-span interval level, showing how many genes were annotated with &gt;1 isoform. It checks whether multiple coding isoforms are supported before exact CDS segmentation is required.",
     cds_segmentation_f1:
       "<strong>F1 with seg.:</strong> CDS-branch F1 after exact CDS segmentation is checked. This is stricter than CDS interval matching because the predicted coding pieces must match the reference CDS structure.",
     cds_segmentation_mi:
