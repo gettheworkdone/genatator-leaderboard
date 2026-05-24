@@ -861,7 +861,7 @@ export default function LeaderboardPanel() {
       const baseName = uploadFile.name.replace(/\.[^.]+$/, "") || "Temporary preview";
       const modelName = uploadModelName.trim() || baseName;
 
-      const response = await fetch("/api/leaderboard/upload", {
+      const response = await fetch("/api/leaderboard/temporary-preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -872,7 +872,7 @@ export default function LeaderboardPanel() {
 
       const payload = await response.json();
       if (!response.ok) {
-        setUploadMessage(payload.detail || "Upload failed.");
+        setUploadMessage(payload.detail || "Preview failed.");
         return;
       }
 
@@ -880,7 +880,7 @@ export default function LeaderboardPanel() {
         const next = current.filter((item) => item.model?.model_id !== payload.model?.model_id);
         return [...next, payload];
       });
-      setUploadMessage("Temporary preview loaded.");
+      setUploadMessage("Temporary preview loaded for this page session.");
       setUploadFile(null);
       setUploadModelName("");
 
@@ -889,7 +889,7 @@ export default function LeaderboardPanel() {
       }
 
     } catch (error) {
-      setUploadMessage(error?.message || "Upload failed.");
+      setUploadMessage(error?.message || "Preview failed.");
     } finally {
       setUploadLoading(false);
     }
