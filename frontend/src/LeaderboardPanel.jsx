@@ -90,8 +90,8 @@ const LEADERBOARD_DESCRIPTION_HTML = String.raw`
   </p>
 
   <p>
-    The first panel, <strong>Main metrics</strong>, gives the fastest overview. You can specify the active tolerance
-    <strong>k</strong>. Here, <strong>k</strong>
+    The first panel, <strong>Main metrics</strong>, gives the fastest overview. You can specify the tolerance
+    <strong>k</strong>, and all metrics across the leaderboard are updated to that same value. Here, <strong>k</strong>
     is the allowed deviation, in base pairs, between predicted and reference transcript boundaries. In this context,
     transcript start means the first transcribed nucleotide, and transcript end means the last transcribed nucleotide.
     These positions are biologically less sharply defined than splice sites because transcription initiation and
