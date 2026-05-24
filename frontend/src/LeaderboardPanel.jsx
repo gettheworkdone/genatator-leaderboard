@@ -854,6 +854,7 @@ export default function LeaderboardPanel() {
     }
 
     setUploadLoading(true);
+    setUploadMessage("Queued / calculating metrics for your model…");
     try {
       const predGffText = await uploadFile.text();
       const baseName = uploadFile.name.replace(/\.[^.]+$/, "") || "Temporary preview";
@@ -878,7 +879,7 @@ export default function LeaderboardPanel() {
         const next = current.filter((item) => item.model?.model_id !== payload.model?.model_id);
         return [...next, payload];
       });
-      setUploadMessage("Your submission is in queue.");
+      setUploadMessage("Finished. This temporary result is shown only in this browser session and will disappear after refresh.");
       setUploadFile(null);
       setUploadModelName("");
 

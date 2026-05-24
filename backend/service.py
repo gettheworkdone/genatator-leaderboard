@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import copy
+import gc
 import json
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -13,7 +15,7 @@ import uuid
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from queue import Queue
+from queue import Full, Queue
 from typing import Any, Iterable, Optional
 from urllib.error import URLError
 from urllib.request import urlopen
@@ -22,7 +24,7 @@ import pandas as pd
 
 from gene_level_final_final_fix import GeneLevelEvaluator
 
-from .gff_io import gff_text_to_dataframe, gff_text_to_dataframe_with_report
+from .gff_io import gff_path_to_dataframe, gff_text_to_dataframe, gff_text_to_dataframe_with_report
 
 
 SOURCE_REPOSITORY_URL = "https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git"
@@ -32,6 +34,8 @@ USE_STRAND = True
 EXON_TRANSCRIPT_TYPES = ["mRNA", "lnc_RNA"]
 CDS_TRANSCRIPT_TYPES = ["mRNA"]
 BRANCHES = ("exon", "cds")
+MAX_TEMPORARY_QUEUE_SIZE = max(int(os.getenv("LEADERBOARD_TEMP_QUEUE_MAX", "3")), 1)
+MAX_TEMPORARY_GFF_BYTES = max(int(os.getenv("LEADERBOARD_TEMP_MAX_BYTES", str(3 * 1024 * 1024))), 1024)
 STRATIFIER_LABELS = {
     "strand": "Strand",
     "chromosome": "Chromosome",
@@ -136,11 +140,11 @@ class LeaderboardService:
         self._lock = threading.Lock()
         self._state = ServiceState()
         self._permanent_models: dict[str, ModelBundle] = {}
-        self._temporary_models: dict[str, ModelBundle] = {}
         self._ground_truth_indices_by_strand: dict[bool, dict[str, dict[str, object]]] = {}
         self._ground_truth_input: Path | pd.DataFrame = self.ground_truth_path
         self._initializer_started = False
-        self._upload_queue: Queue[dict[str, object]] = Queue()
+        self._upload_queue: Queue[dict[str, object]] = Queue(maxsize=MAX_TEMPORARY_QUEUE_SIZE)
+        self._metric_compute_lock = threading.Lock()
         threading.Thread(target=self._upload_worker, daemon=True).start()
 
     # ------------------------------------------------------------------
@@ -155,7 +159,6 @@ class LeaderboardService:
                 return self._state.to_dict()
             if force:
                 self._permanent_models = {}
-                self._temporary_models = {}
                 self._ground_truth_indices_by_strand = {}
                 self._ground_truth_input = self.ground_truth_path
             self._initializer_started = True
@@ -368,22 +371,32 @@ class LeaderboardService:
         return {"branch": branch, "k": selected_k, "gene": gene_data}
 
     def submit_temporary_model(self, model_name: str, pred_gff_text: str) -> dict[str, object]:
-        display_name = model_name.strip() or f"Temporary model {uuid.uuid4().hex[:8]}"
+        return self.compute_temporary_preview(model_name=model_name, pred_gff_text=pred_gff_text)
+
+    def compute_temporary_preview(self, model_name: str, pred_gff_text: str) -> dict[str, object]:
+        if len(pred_gff_text.encode("utf-8")) > MAX_TEMPORARY_GFF_BYTES:
+            raise ValueError("Prediction file is too large for temporary preview.")
+        display_name = model_name.strip() or "Temporary preview"
         job = {
             "job_id": uuid.uuid4().hex,
             "model_name": display_name,
             "pred_gff_text": pred_gff_text,
+            "event": threading.Event(),
+            "result": None,
+            "error": None,
         }
-        self._upload_queue.put(job)
+        try:
+            self._upload_queue.put_nowait(job)
+        except Full as exc:
+            raise RuntimeError("Temporary preview queue is full. Please retry shortly.") from exc
         with self._lock:
             self._state.upload_queue_length = self._upload_queue.qsize()
-        return {
-            "job_id": job["job_id"],
-            "queued": True,
-            "message": "Temporary model submitted. It will appear in the leaderboard when processing finishes.",
-        }
+        job["event"].wait()
+        if job["error"] is not None:
+            raise RuntimeError(str(job["error"]))
+        return job["result"]
 
-    def compute_temporary_preview(self, model_name: str, pred_gff_text: str) -> dict[str, object]:
+    def _compute_temporary_preview_direct(self, model_name: str, pred_gff_text: str) -> dict[str, object]:
         display_name = model_name.strip() or "Temporary preview"
         model_id = f"preview-{_slugify(display_name)}"
         pred_df = gff_text_to_dataframe(str(pred_gff_text))
@@ -397,7 +410,10 @@ class LeaderboardService:
             temporary=True,
             source_file=None,
         )
-        return self._serialize_temporary_preview(bundle)
+        payload = self._serialize_temporary_preview(bundle)
+        del bundle, pred_df
+        gc.collect()
+        return payload
 
     # ------------------------------------------------------------------
     # Initialization and uploads
@@ -458,7 +474,7 @@ class LeaderboardService:
                 display_name = self._display_name_for_path(pred_file)
                 model_id = pred_file.stem
                 try:
-                    pred_df = gff_text_to_dataframe(pred_file.read_text(encoding="utf-8"))
+                    pred_df = gff_path_to_dataframe(pred_file)
                     if pred_df.empty:
                         self._set_state(
                             message=f"Skipping {display_name}: prediction file parsed to empty data.",
@@ -525,26 +541,20 @@ class LeaderboardService:
                     self._state.upload_queue_length = self._upload_queue.qsize()
                 if not self.ground_truth_path.exists():
                     continue
-                pred_df = gff_text_to_dataframe(str(job["pred_gff_text"]))
-                pred_df = self._normalize_prediction_gff_for_evaluator(pred_df)
-                model_id = f"tmp-{_slugify(str(job['model_name']))}-{job['job_id'][:8]}"
-                bundle = self._compute_model_bundle(
-                    model_id=model_id,
-                    display_name=str(job["model_name"]),
-                    pred_gff=pred_df,
-                    temporary=True,
-                    source_file=None,
-                )
-                with self._lock:
-                    self._temporary_models[model_id] = bundle
-            except Exception:
-                # Upload errors are intentionally not persisted to storage.
-                pass
+                result = self._compute_temporary_preview_direct(str(job["model_name"]), str(job["pred_gff_text"]))
+                job["result"] = result
+            except Exception as exc:
+                job["error"] = str(exc)
             finally:
+                job["pred_gff_text"] = None
+                event = job.get("event")
+                if isinstance(event, threading.Event):
+                    event.set()
                 with self._lock:
                     self._state.upload_current = None
                     self._state.upload_queue_length = self._upload_queue.qsize()
                 self._upload_queue.task_done()
+                gc.collect()
 
     # ------------------------------------------------------------------
     # Model computation
@@ -562,76 +572,76 @@ class LeaderboardService:
         stratifier_by_strand = {}
         detailed_by_strand = {}
         annotated_genes_by_strand = {}
-        for use_strand in (True, False):
-            raw_exon_result = self.evaluator.evaluate_gff_exon(
-                pred_gff=pred_gff,
-                true_gff=self._ground_truth_input,
-                k_values=DEFAULT_K_VALUES,
-                use_strand=use_strand,
-                transcript_types=EXON_TRANSCRIPT_TYPES,
-            )
-            raw_cds_result = self.evaluator.evaluate_gff_cds(
-                pred_gff=pred_gff,
-                true_gff=self._ground_truth_input,
-                k_values=DEFAULT_K_VALUES,
-                use_strand=use_strand,
-                transcript_types=CDS_TRANSCRIPT_TYPES,
-            )
-            exon_stratifier = self.evaluator.build_stratifier(
-                branch_result=raw_exon_result,
-                pred_gff=pred_gff,
-                true_gff=self._ground_truth_input,
-                use_strand=use_strand,
-                transcript_types=EXON_TRANSCRIPT_TYPES,
-            )
-            cds_stratifier = self.evaluator.build_stratifier(
-                branch_result=raw_cds_result,
-                pred_gff=pred_gff,
-                true_gff=self._ground_truth_input,
-                use_strand=use_strand,
-                transcript_types=CDS_TRANSCRIPT_TYPES,
-            )
-            exon_detailed = self.evaluator.build_detailed_info(
-                branch_result=raw_exon_result,
-                pred_gff=pred_gff,
-                true_gff=self._ground_truth_input,
-                use_strand=use_strand,
-                transcript_types=EXON_TRANSCRIPT_TYPES,
-            )
-            cds_detailed = self.evaluator.build_detailed_info(
-                branch_result=raw_cds_result,
-                pred_gff=pred_gff,
-                true_gff=self._ground_truth_input,
-                use_strand=use_strand,
-                transcript_types=CDS_TRANSCRIPT_TYPES,
-            )
-            exon_detailed = self.evaluator.build_annotated_transcripts_detailed(
-                exon_detailed=exon_detailed,
-                cds_detailed=cds_detailed,
-                transcript_types=tuple(EXON_TRANSCRIPT_TYPES),
-                mrna_type="mRNA",
-            )
-            annotated_genes = self.evaluator.build_annotated_genes(
-                exon_result=raw_exon_result,
-                cds_result=raw_cds_result,
-                transcript_types=tuple(EXON_TRANSCRIPT_TYPES),
-                mrna_type="mRNA",
-                include_gene_ids=True,
-            )
-            exon_result = self._compact_branch_result(raw_exon_result)
-            cds_result = self._compact_branch_result(raw_cds_result)
-            for k in DEFAULT_K_VALUES:
-                genes_union: set[str] = set()
-                for group in annotated_genes.get("chromosome", {}).values():
-                    genes_union.update(group.get(int(k), {}).get("gene_ids", []))
-                annotated_genes.setdefault("all", {}).setdefault("all", {})[int(k)] = {
-                    "count": len(genes_union),
-                    "gene_ids": sorted(genes_union),
-                }
-            branch_results_by_strand[use_strand] = {"exon": exon_result, "cds": cds_result}
-            stratifier_by_strand[use_strand] = {"exon": exon_stratifier, "cds": cds_stratifier}
-            detailed_by_strand[use_strand] = {"exon": exon_detailed, "cds": cds_detailed}
-            annotated_genes_by_strand[use_strand] = annotated_genes
+        with self._metric_compute_lock:
+            for use_strand in (True, False):
+                raw_exon_result = self.evaluator.evaluate_gff_exon(
+                    pred_gff=pred_gff,
+                    true_gff=self._ground_truth_input,
+                    k_values=DEFAULT_K_VALUES,
+                    use_strand=use_strand,
+                    transcript_types=EXON_TRANSCRIPT_TYPES,
+                )
+                raw_cds_result = self.evaluator.evaluate_gff_cds(
+                    pred_gff=pred_gff,
+                    true_gff=self._ground_truth_input,
+                    k_values=DEFAULT_K_VALUES,
+                    use_strand=use_strand,
+                    transcript_types=CDS_TRANSCRIPT_TYPES,
+                )
+                exon_stratifier = self.evaluator.build_stratifier(
+                    branch_result=raw_exon_result,
+                    pred_gff=pred_gff,
+                    true_gff=self._ground_truth_input,
+                    use_strand=use_strand,
+                    transcript_types=EXON_TRANSCRIPT_TYPES,
+                )
+                cds_stratifier = self.evaluator.build_stratifier(
+                    branch_result=raw_cds_result,
+                    pred_gff=pred_gff,
+                    true_gff=self._ground_truth_input,
+                    use_strand=use_strand,
+                    transcript_types=CDS_TRANSCRIPT_TYPES,
+                )
+                exon_detailed = self.evaluator.build_detailed_info(
+                    branch_result=raw_exon_result,
+                    pred_gff=pred_gff,
+                    true_gff=self._ground_truth_input,
+                    use_strand=use_strand,
+                    transcript_types=EXON_TRANSCRIPT_TYPES,
+                )
+                cds_detailed = self.evaluator.build_detailed_info(
+                    branch_result=raw_cds_result,
+                    pred_gff=pred_gff,
+                    true_gff=self._ground_truth_input,
+                    use_strand=use_strand,
+                    transcript_types=CDS_TRANSCRIPT_TYPES,
+                )
+                exon_detailed = self.evaluator.build_annotated_transcripts_detailed(
+                    exon_detailed=exon_detailed,
+                    cds_detailed=cds_detailed,
+                    transcript_types=tuple(EXON_TRANSCRIPT_TYPES),
+                    mrna_type="mRNA",
+                )
+                annotated_genes = self.evaluator.build_annotated_genes(
+                    exon_result=raw_exon_result,
+                    cds_result=raw_cds_result,
+                    transcript_types=tuple(EXON_TRANSCRIPT_TYPES),
+                    mrna_type="mRNA",
+                    include_gene_ids=True,
+                )
+                exon_result = self._compact_branch_result(raw_exon_result)
+                cds_result = self._compact_branch_result(raw_cds_result)
+                for k in DEFAULT_K_VALUES:
+                    genes_union: set[str] = set()
+                    for group in annotated_genes.get("chromosome", {}).values():
+                        genes_union.update(group.get(int(k), {}).get("gene_ids", []))
+                    annotated_genes.setdefault("all", {}).setdefault("all", {})[int(k)] = {"count": len(genes_union)}
+                branch_results_by_strand[use_strand] = {"exon": exon_result, "cds": cds_result}
+                stratifier_by_strand[use_strand] = {"exon": self._strip_matched_pairs(exon_stratifier), "cds": self._strip_matched_pairs(cds_stratifier)}
+                detailed_by_strand[use_strand] = {"exon": exon_detailed, "cds": cds_detailed}
+                annotated_genes_by_strand[use_strand] = self._strip_gene_ids(annotated_genes)
+                del raw_exon_result, raw_cds_result
+                gc.collect()
 
         prediction_index = self._build_prediction_index(pred_gff)
         return ModelBundle(
@@ -647,14 +657,26 @@ class LeaderboardService:
         )
 
     def _compact_branch_result(self, result: dict[int, dict[str, object]]) -> dict[int, dict[str, object]]:
-        compact = copy.deepcopy(result)
-        max_k = max(compact.keys())
-        for k, payload in compact.items():
-            if int(k) == int(max_k):
-                continue
+        compact: dict[int, dict[str, object]] = {}
+        for k, payload in result.items():
+            compact[int(k)] = copy.deepcopy(payload)
             for level_name in ("interval-level", "segmentation-level"):
-                payload.get(level_name, {}).pop("matched_pairs", None)
+                compact[int(k)].get(level_name, {}).pop("matched_pairs", None)
         return compact
+
+    def _strip_matched_pairs(self, obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return {k: self._strip_matched_pairs(v) for k, v in obj.items() if k != "matched_pairs"}
+        if isinstance(obj, list):
+            return [self._strip_matched_pairs(v) for v in obj]
+        return obj
+
+    def _strip_gene_ids(self, obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return {k: self._strip_gene_ids(v) for k, v in obj.items() if k != "gene_ids"}
+        if isinstance(obj, list):
+            return [self._strip_gene_ids(v) for v in obj]
+        return obj
 
     def _normalize_prediction_gff_for_evaluator(self, pred_df: pd.DataFrame) -> pd.DataFrame:
         if pred_df.empty:
@@ -1119,8 +1141,6 @@ class LeaderboardService:
         with self._lock:
             if model_id in self._permanent_models:
                 return self._permanent_models[model_id]
-            if model_id in self._temporary_models:
-                return self._temporary_models[model_id]
         raise KeyError(f"Model '{model_id}' is not available.")
 
     def _selected_bundles(self, model_ids: Optional[list[str]]) -> list[ModelBundle]:
@@ -1131,12 +1151,10 @@ class LeaderboardService:
             for model_id in model_ids:
                 if model_id in self._permanent_models:
                     selected.append(self._permanent_models[model_id])
-                elif model_id in self._temporary_models:
-                    selected.append(self._temporary_models[model_id])
             return selected
 
     def _ordered_bundles_locked(self) -> list[ModelBundle]:
-        bundles = list(self._permanent_models.values()) + list(self._temporary_models.values())
+        bundles = list(self._permanent_models.values())
         bundles.sort(key=lambda item: (item.temporary, item.display_name.lower(), item.model_id))
         return bundles
 

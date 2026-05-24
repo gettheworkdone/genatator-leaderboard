@@ -220,7 +220,9 @@ def leaderboard_upload(payload: TemporaryUploadRequest) -> dict[str, Any]:
             pred_gff_text=payload.pred_gff_text,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        message = str(exc)
+        status = 413 if "too large" in message.lower() else 429 if "queue is full" in message.lower() else 400
+        raise HTTPException(status_code=status, detail=message) from exc
 
 
 @app.post("/api/leaderboard/temporary-preview")
@@ -233,7 +235,9 @@ def leaderboard_temporary_preview(payload: TemporaryUploadRequest) -> dict[str, 
             pred_gff_text=payload.pred_gff_text,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        message = str(exc)
+        status = 413 if "too large" in message.lower() else 429 if "queue is full" in message.lower() else 400
+        raise HTTPException(status_code=status, detail=message) from exc
 
 
 @app.get("/", response_model=None)
