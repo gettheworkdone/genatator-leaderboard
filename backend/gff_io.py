@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from io import StringIO
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -40,3 +41,27 @@ def gff_text_to_dataframe_with_report(text: str) -> tuple[pd.DataFrame, dict[str
     """Backward-compatible helper kept for older imports."""
     df = gff_text_to_dataframe(text)
     return df, {"raw_rows": int(len(df)), "kept_rows": int(len(df)), "dropped_rows": 0}
+
+
+def gff_path_to_dataframe(path: str | Path) -> pd.DataFrame:
+    df = pd.read_csv(
+        Path(path),
+        sep="\t",
+        names=GeneLevelEvaluator.GFF_COLUMNS,
+        header=None,
+        comment="#",
+        dtype=str,
+    )
+    if df.empty:
+        return df
+    for column in ("start", "end"):
+        numeric = pd.to_numeric(df[column], errors="coerce")
+        numeric = numeric.where(numeric.notna(), other=pd.NA)
+        numeric = numeric.where(~numeric.isin([float("inf"), float("-inf")]), other=pd.NA)
+        df[column] = numeric
+    df = df[df["start"].notna() & df["end"].notna()].copy()
+    if df.empty:
+        return df
+    df["start"] = df["start"].astype(int).astype(str)
+    df["end"] = df["end"].astype(int).astype(str)
+    return df
