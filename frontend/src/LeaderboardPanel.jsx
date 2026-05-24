@@ -292,8 +292,8 @@ const METRIC_TOOLTIPS = Object.freeze({
 
 function MetricHeaderTooltip({ label, tooltipHtml }) {
   const [state, setState] = useState({ open: false, x: 0, y: 0 });
-  const offsetX = 8;
-  const offsetY = 8;
+  const offsetX = 16;
+  const offsetY = 16;
   const updateFromMouseEvent = useCallback((event) => {
     setState({ open: true, x: event.clientX + offsetX, y: event.clientY + offsetY });
   }, []);
