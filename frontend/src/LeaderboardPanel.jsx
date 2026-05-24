@@ -878,7 +878,7 @@ export default function LeaderboardPanel() {
         const next = current.filter((item) => item.model?.model_id !== payload.model?.model_id);
         return [...next, payload];
       });
-      setUploadMessage("Temporary preview loaded for this page session.");
+      setUploadMessage("Your submission is in queue.");
       setUploadFile(null);
       setUploadModelName("");
 
@@ -1105,7 +1105,7 @@ export default function LeaderboardPanel() {
           {uploadLoading ? (
             <Box className="score-calc-animation">
               <span className="orb" />
-              <Typography color="text.secondary">Calculating metrics for you model...</Typography>
+              <Typography color="text.secondary">Calculating metrics for your model...</Typography>
             </Box>
           ) : null}
 
