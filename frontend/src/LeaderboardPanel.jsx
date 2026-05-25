@@ -764,7 +764,7 @@ export default function LeaderboardPanel() {
   }, [detailBranch, geneQuery, genePage, useStrand]);
 
   const fetchGeneDetail = useCallback(async (geneId) => {
-    const cacheKey = `${detailBranch}|${geneId}|${selectedK}|${selectedModels.join(",")}`;
+    const cacheKey = `${detailBranch}|${useStrand ? "strand" : "nostrand"}|${geneId}|${selectedK}|${selectedModels.join(",")}`;
     if (geneDetails[cacheKey]) {
       return;
     }
@@ -789,8 +789,21 @@ export default function LeaderboardPanel() {
       temporaryPreviews.forEach((preview) => {
         const temporaryModelId = preview.model?.model_id;
         if (!temporaryModelId || !selectedModels.includes(temporaryModelId)) return;
-        const local = ((preview.detailed_by_strand?.[useStrand ? "true" : "false"] || preview.detailed)?.[detailBranch]?.[transcript.transcript_id]);
+        const strandKey = useStrand ? "true" : "false";
+        const local = ((preview.detailed_by_strand?.[strandKey] || preview.detailed)?.[detailBranch]?.[transcript.transcript_id]);
         if (!local) return;
+
+        const annotationSource =
+          (preview.detailed_by_strand?.[strandKey] || preview.detailed)?.exon?.[transcript.transcript_id];
+        const completeAnnotationMap = {};
+        (annotationSource?.annotated_transcripts || []).forEach((item) => {
+          const predId = item?.pred_id;
+          const minK = Number(item?.min_k);
+          if (!predId || !Number.isFinite(minK)) return;
+          if (!(predId in completeAnnotationMap) || minK < completeAnnotationMap[predId]) {
+            completeAnnotationMap[predId] = minK;
+          }
+        });
 
         const intervalMap = Object.fromEntries(
           (local["interval-level"]?.predictions || [])
@@ -808,6 +821,7 @@ export default function LeaderboardPanel() {
           const predMeta = preview.prediction_index?.[predId] || {};
           const candidates = [intervalMap[predId], segmentationMap[predId]].filter((value) => Number.isFinite(value));
           const minK = candidates.length ? Math.min(...candidates) : null;
+          const completeMinK = Number.isFinite(completeAnnotationMap[predId]) ? completeAnnotationMap[predId] : null;
           return {
             model_id: temporaryModelId,
             model_name: preview.model.display_name,
@@ -821,20 +835,34 @@ export default function LeaderboardPanel() {
             cds_segments: predMeta.cds_segments || [],
             min_k: minK,
             matched_at_k: minK !== null && minK <= selectedK,
+            complete_mrna_annotation_min_k: completeMinK,
+            complete_mrna_annotation: completeMinK !== null && completeMinK <= selectedK,
           };
         });
 
+        const tempAnnotated = Object.entries(completeAnnotationMap).map(([predId, minK]) => ({
+          model_id: temporaryModelId,
+          model_name: preview.model.display_name,
+          temporary: true,
+          pred_id: predId,
+          min_k: minK,
+          matched_at_k: minK <= selectedK,
+        }));
+
+        const mergedAnnotated = [...(merged.annotated_transcripts || []), ...tempAnnotated];
         merged = {
           ...merged,
           matched_predictions: [...merged.matched_predictions, ...extras],
           matched_prediction_count: merged.matched_predictions.length + extras.length,
+          annotated_transcripts: mergedAnnotated,
+          is_annotated: merged.is_annotated || tempAnnotated.some((item) => item.matched_at_k),
         };
       });
       return merged;
     });
 
     setGeneDetails((current) => ({ ...current, [cacheKey]: payload }));
-  }, [detailBranch, geneDetails, selectedK, selectedModels, temporaryPreviews]);
+  }, [detailBranch, geneDetails, selectedK, selectedModels, temporaryPreviews, useStrand]);
 
   useEffect(() => {
     if (!geneList.items?.length || !selectedModels.length) {
@@ -1761,7 +1789,7 @@ export default function LeaderboardPanel() {
           ) : (
             <Stack spacing={1.1}>
               {geneList.items.map((gene) => {
-                const cacheKey = `${detailBranch}|${gene.gene_id}|${selectedK}|${selectedModels.join(",")}`;
+                const cacheKey = `${detailBranch}|${useStrand ? "strand" : "nostrand"}|${gene.gene_id}|${selectedK}|${selectedModels.join(",")}`;
                 const detail = geneDetails[cacheKey];
                 const matchedAcrossGene = detail
                   ? detail.gene.transcripts.reduce(
@@ -1908,9 +1936,7 @@ export default function LeaderboardPanel() {
                                               </TableCell>
                                               <TableCell sx={{ width: 54, minWidth: 54 }}>{formatScore(match.min_k, 0)}</TableCell>
                                               <TableCell>
-                                                {new Set((transcript.annotated_transcripts || []).map((item) => item.pred_id)).has(match.pred_id)
-                                                  ? "✅"
-                                                  : "❌"}
+                                                {match.complete_mrna_annotation ? "✅" : "❌"}
                                               </TableCell>
                                             </TableRow>
                                           ))}
