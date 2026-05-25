@@ -84,6 +84,25 @@ class ModelBundle:
     source_file: str | None = None
 
 
+def _complete_annotation_map(bundle: ModelBundle, tx_id: str, use_strand: bool) -> dict[str, int]:
+    annotation_entry = (
+        bundle.detailed_by_strand
+        .get(bool(use_strand), {})
+        .get("exon", {})
+        .get(tx_id, {})
+    )
+    output: dict[str, int] = {}
+    for item in annotation_entry.get("annotated_transcripts", []) or []:
+        pred_id = item.get("pred_id")
+        min_k = _safe_int(item.get("min_k"))
+        if not pred_id or min_k is None:
+            continue
+        pred_id = str(pred_id)
+        if pred_id not in output or min_k < output[pred_id]:
+            output[pred_id] = min_k
+    return output
+
+
 @dataclass
 class ServiceState:
     running: bool = False
@@ -333,12 +352,14 @@ class LeaderboardService:
                     for item in detail_entry["segmentation-level"].get("predictions", [])
                     if (safe_value := _safe_int(item.get("min_k"))) is not None
                 }
+                complete_annotation_map = _complete_annotation_map(bundle, tx_id, use_strand)
                 for pred_id in sorted(set(interval_map) | set(segmentation_map)):
                     pred_meta = bundle.prediction_index.get(pred_id, {})
                     interval_min_k = interval_map.get(pred_id)
                     segmentation_min_k = segmentation_map.get(pred_id)
                     min_k_candidates = [value for value in (interval_min_k, segmentation_min_k) if value is not None]
                     min_k = min(min_k_candidates) if min_k_candidates else None
+                    complete_min_k = complete_annotation_map.get(pred_id)
                     matches.append(
                         {
                             "model_id": bundle.model_id,
@@ -353,6 +374,8 @@ class LeaderboardService:
                             "cds_segments": pred_meta.get("cds_segments", []),
                             "min_k": min_k,
                             "matched_at_k": min_k is not None and min_k <= selected_k,
+                            "complete_mrna_annotation_min_k": complete_min_k,
+                            "complete_mrna_annotation": complete_min_k is not None and complete_min_k <= selected_k,
                         }
                     )
             matches.sort(
@@ -364,9 +387,21 @@ class LeaderboardService:
             )
             transcript["matched_predictions"] = matches
             transcript["matched_prediction_count"] = len(matches)
-            exemplar_detail = selected_models[0].detailed_by_strand[bool(use_strand)].get(branch, {}).get(tx_id) if selected_models else None
-            transcript["annotated_transcripts"] = (exemplar_detail or {}).get("annotated_transcripts", [])
-            transcript["is_annotated"] = bool(transcript["annotated_transcripts"])
+            annotated_transcripts = []
+            for bundle in selected_models:
+                for pred_id, min_k in _complete_annotation_map(bundle, tx_id, use_strand).items():
+                    annotated_transcripts.append(
+                        {
+                            "model_id": bundle.model_id,
+                            "model_name": bundle.display_name,
+                            "temporary": bundle.temporary,
+                            "pred_id": pred_id,
+                            "min_k": min_k,
+                            "matched_at_k": min_k <= selected_k,
+                        }
+                    )
+            transcript["annotated_transcripts"] = annotated_transcripts
+            transcript["is_annotated"] = any(item["matched_at_k"] for item in annotated_transcripts)
 
         return {"branch": branch, "k": selected_k, "gene": gene_data}
 
