@@ -97,3 +97,90 @@ def test_gene_detail_complete_annotation_respects_min_k_threshold():
     assert tx["is_annotated"] is False
     assert _row(detail, "B")["complete_mrna_annotation_min_k"] == 3
     assert _row(detail, "B")["complete_mrna_annotation"] is False
+
+
+def test_gene_detail_uses_segmentation_predictions_only():
+    service = LeaderboardService.__new__(LeaderboardService)
+
+    bundle = ModelBundle(
+        model_id="model",
+        display_name="model",
+        temporary=False,
+        branch_results_by_strand={},
+        stratifier_by_strand={},
+        detailed_by_strand={
+            True: {
+                "exon": {
+                    "tx1": {
+                        "interval-level": {
+                            "predictions": [
+                                {"pred_id": "interval_only", "min_k": 1},
+                                {"pred_id": "segmented", "min_k": 5},
+                            ]
+                        },
+                        "segmentation-level": {
+                            "predictions": [
+                                {"pred_id": "segmented", "min_k": 7},
+                            ]
+                        },
+                        "annotated_transcripts": [],
+                    }
+                }
+            }
+        },
+        annotated_genes_by_strand={},
+        prediction_index={
+            "interval_only": {
+                "chromosome": "chr1",
+                "start": 1,
+                "end": 2,
+                "strand": "+",
+                "exon_segments": [],
+                "cds_segments": [],
+            },
+            "segmented": {
+                "chromosome": "chr1",
+                "start": 3,
+                "end": 4,
+                "strand": "+",
+                "exon_segments": [],
+                "cds_segments": [],
+            },
+        },
+    )
+
+    service._ground_truth_indices_by_strand = {
+        True: {
+            "exon": {
+                "genes": {
+                    "g1": {
+                        "gene_id": "g1",
+                        "transcripts": [
+                            {
+                                "transcript_id": "tx1",
+                                "transcript_type": "mRNA",
+                                "length": 100,
+                                "chromosome": "chr1",
+                                "start": 1,
+                                "end": 100,
+                                "strand": "+",
+                                "exon_segments": [],
+                                "cds_segments": [],
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+    }
+    service._selected_bundles = lambda model_ids: [bundle]
+
+    detail = service.gene_detail("exon", "g1", 10, ["model"], True)
+    rows = detail["gene"]["transcripts"][0]["matched_predictions"]
+    pred_ids = {row["pred_id"] for row in rows}
+
+    assert "segmented" in pred_ids
+    assert "interval_only" not in pred_ids
+    assert rows[0]["min_k"] == 7
+    assert rows[0]["matched_at_k"] is True
+    assert detail["gene"]["transcripts"][0]["matched_prediction_count"] == 1

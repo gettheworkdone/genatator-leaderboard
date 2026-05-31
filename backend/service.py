@@ -342,23 +342,15 @@ class LeaderboardService:
                 detail_entry = bundle.detailed_by_strand[bool(use_strand)].get(branch, {}).get(tx_id)
                 if detail_entry is None:
                     continue
-                interval_map = {
-                    item["pred_id"]: safe_value
-                    for item in detail_entry["interval-level"].get("predictions", [])
-                    if (safe_value := _safe_int(item.get("min_k"))) is not None
-                }
                 segmentation_map = {
                     item["pred_id"]: safe_value
                     for item in detail_entry["segmentation-level"].get("predictions", [])
                     if (safe_value := _safe_int(item.get("min_k"))) is not None
                 }
                 complete_annotation_map = _complete_annotation_map(bundle, tx_id, use_strand)
-                for pred_id in sorted(set(interval_map) | set(segmentation_map)):
+                for pred_id in sorted(segmentation_map):
                     pred_meta = bundle.prediction_index.get(pred_id, {})
-                    interval_min_k = interval_map.get(pred_id)
-                    segmentation_min_k = segmentation_map.get(pred_id)
-                    min_k_candidates = [value for value in (interval_min_k, segmentation_min_k) if value is not None]
-                    min_k = min(min_k_candidates) if min_k_candidates else None
+                    segmentation_min_k = segmentation_map[pred_id]
                     complete_min_k = complete_annotation_map.get(pred_id)
                     matches.append(
                         {
@@ -372,8 +364,8 @@ class LeaderboardService:
                             "strand": pred_meta.get("strand"),
                             "exon_segments": pred_meta.get("exon_segments", []),
                             "cds_segments": pred_meta.get("cds_segments", []),
-                            "min_k": min_k,
-                            "matched_at_k": min_k is not None and min_k <= selected_k,
+                            "min_k": segmentation_min_k,
+                            "matched_at_k": segmentation_min_k <= selected_k,
                             "complete_mrna_annotation_min_k": complete_min_k,
                             "complete_mrna_annotation": complete_min_k is not None and complete_min_k <= selected_k,
                         }
