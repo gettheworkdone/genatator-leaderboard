@@ -552,6 +552,7 @@ export default function LeaderboardPanel() {
   const fullColumnHighlights = useMemo(
     () =>
       computeColumnHighlights(fullMetrics?.rows || [], [
+        "annotated_genes",
         "interval_precision",
         "interval_recall",
         "interval_f1",
@@ -805,22 +806,15 @@ export default function LeaderboardPanel() {
           }
         });
 
-        const intervalMap = Object.fromEntries(
-          (local["interval-level"]?.predictions || [])
-            .filter((item) => item.min_k !== null && item.min_k !== undefined)
-            .map((item) => [item.pred_id, Number(item.min_k)]),
-        );
-
         const segmentationMap = Object.fromEntries(
           (local["segmentation-level"]?.predictions || [])
             .filter((item) => item.min_k !== null && item.min_k !== undefined)
             .map((item) => [item.pred_id, Number(item.min_k)]),
         );
 
-        const extras = [...new Set([...Object.keys(intervalMap), ...Object.keys(segmentationMap)])].map((predId) => {
+        const extras = Object.keys(segmentationMap).map((predId) => {
           const predMeta = preview.prediction_index?.[predId] || {};
-          const candidates = [intervalMap[predId], segmentationMap[predId]].filter((value) => Number.isFinite(value));
-          const minK = candidates.length ? Math.min(...candidates) : null;
+          const minK = Number(segmentationMap[predId]);
           const completeMinK = Number.isFinite(completeAnnotationMap[predId]) ? completeAnnotationMap[predId] : null;
           return {
             model_id: temporaryModelId,
@@ -833,8 +827,8 @@ export default function LeaderboardPanel() {
             strand: predMeta.strand,
             exon_segments: predMeta.exon_segments || [],
             cds_segments: predMeta.cds_segments || [],
-            min_k: minK,
-            matched_at_k: minK !== null && minK <= selectedK,
+            min_k: Number.isFinite(minK) ? minK : null,
+            matched_at_k: Number.isFinite(minK) && minK <= selectedK,
             complete_mrna_annotation_min_k: completeMinK,
             complete_mrna_annotation: completeMinK !== null && completeMinK <= selectedK,
           };
@@ -1154,7 +1148,7 @@ export default function LeaderboardPanel() {
         <Stack spacing={1.4}>
           <SectionTitle title="TLDR" />
           <Typography color="text.secondary" sx={{ fontSize: "0.92rem", lineHeight: 1.55, fontWeight: 700 }}>
-            This leaderboard evaluates gene annotation models against human reference annotation. For protein-coding genes performance, sort by F1 with seg. on CDS. For all genes, including lncRNA, sort by F1 with seg. on exons. Current leaders: GENATATOR for all genes and Tiberius for protein-coding genes. To submit your model jump <a href="https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git" target="_blank" rel="noreferrer" style={{ color: "var(--mui-palette-primary-main)", textDecoration: "underline" }}>https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git</a>
+            This leaderboard evaluates gene annotation models against human reference annotation. For protein-coding genes performance, sort by F1 with seg. on CDS. For all genes, including lncRNA, sort by F1 with seg. on exons. Current leaders: GENATATOR for all genes and Tiberius for protein-coding genes. To submit your model jump <a href="https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git" target="_blank" rel="noreferrer" style={{ color: "var(--mui-palette-primary-main)", textDecoration: "underline" }}>https://github.com/alexeyshmelev/genatator-ab-initio-leaderboard-predictions.git</a>.
           </Typography>
                   </Stack>
       </Paper>
@@ -1281,7 +1275,19 @@ export default function LeaderboardPanel() {
                           )}
                         </Stack>
                       </TableCell>
-                      <TableCell className="rank-column-highlight" sx={{ width: 165, minWidth: 165 }}>{formatScore(row.annotated_genes, 0)}</TableCell>
+                      <TableCell
+                        className="rank-column-highlight"
+                        sx={{
+                          width: 165,
+                          minWidth: 165,
+                          ...(mainColumnHighlights.annotated_genes !== undefined &&
+                          Number(row.annotated_genes) === mainColumnHighlights.annotated_genes
+                            ? { fontWeight: 800 }
+                            : {}),
+                        }}
+                      >
+                        {formatScore(row.annotated_genes, 0)}
+                      </TableCell>
                       <TableCell
                         sx={
                           mainColumnHighlights.exon_interval_f1 !== undefined &&
@@ -1530,7 +1536,18 @@ export default function LeaderboardPanel() {
                           )}
                         </Stack>
                       </TableCell>
-                      <TableCell sx={{ width: 165, minWidth: 165 }}>{formatScore(row.annotated_genes, 0)}</TableCell>
+                      <TableCell
+                        sx={{
+                          width: 165,
+                          minWidth: 165,
+                          ...(fullColumnHighlights.annotated_genes !== undefined &&
+                          Number(row.annotated_genes) === fullColumnHighlights.annotated_genes
+                            ? { fontWeight: 800 }
+                            : {}),
+                        }}
+                      >
+                        {formatScore(row.annotated_genes, 0)}
+                      </TableCell>
                       <TableCell
                         sx={
                           fullColumnHighlights.interval_precision !== undefined &&
